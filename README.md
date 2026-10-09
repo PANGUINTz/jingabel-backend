@@ -1,114 +1,133 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Jingabel — Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API ของระบบจัดการร้านค้าหลายสาขา
+สร้างด้วย **NestJS 12 (ESM) + TypeScript + PostgreSQL + TypeORM**
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+หน้าเว็บอยู่ที่โฟลเดอร์ [`../frontend`](../frontend/README.md) — **ตอนนี้ยังไม่ได้เชื่อมกัน**
+และ API มีแค่ระบบ authentication พื้นฐาน
 
-## Description
+## เริ่มใช้งาน
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+ต้องมี Node.js 24+ และ Docker
 
 ```bash
-$ npm install
+npm install
+cp .env.example .env    # แล้วใส่ JWT_ACCESS_SECRET / JWT_REFRESH_SECRET (openssl rand -hex 32)
+npm run db:up           # Postgres ใน Docker ที่ localhost:5433
+npm run migration:run   # สร้างตาราง
+npm run start:dev       # http://localhost:4000/api
 ```
 
-## Compile and run the project
+หรือรันทั้ง Postgres และ API ใน Docker (API ไม่รัน migration เองตอนเริ่ม):
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+docker compose up -d --build
+docker compose run --rm api npx typeorm migration:run -d dist/database/data-source.js
 ```
 
-## Run tests
+## คำสั่งที่ใช้บ่อย
 
-```bash
-# unit tests
-$ npm run test
+| คำสั่ง | ทำอะไร |
+| --- | --- |
+| `npm run start:dev` | รันแบบ watch |
+| `npm run build` | build ไปที่ `dist/` |
+| `npm run lint` | oxlint |
+| `npm run test:e2e` | e2e test กับฐาน `jingabel_test` (ต้อง `npm run db:up` ก่อน) |
+| `npm run migration:run` | รัน migration ที่ค้างอยู่ |
+| `npm run migration:revert` | ย้อน migration ล่าสุด |
+| `npm run migration:generate -- src/database/migrations/<ชื่อ>` | สร้าง migration จากส่วนต่างระหว่าง entity กับฐานข้อมูล |
 
-# e2e tests
-$ npm run test:e2e
+## Environment variables
 
-# test coverage
-$ npm run test:cov
+| ตัวแปร | ค่าเริ่มต้น | หมายเหตุ |
+| --- | --- | --- |
+| `NODE_ENV` | `development` | `production` ทำให้ cookie เป็น `Secure` |
+| `PORT` | `4000` | |
+| `CORS_ORIGIN` | `http://localhost:3000` | origin ของ frontend ที่ส่ง cookie มาได้ |
+| `DATABASE_URL` | — | ต้องกำหนด เช่น `postgres://jingabel:jingabel@localhost:5433/jingabel` |
+| `JWT_ACCESS_SECRET` | — | ต้องกำหนด อย่างน้อย 32 ตัวอักษร |
+| `JWT_REFRESH_SECRET` | — | ต้องกำหนด อย่างน้อย 32 ตัวอักษร และไม่ซ้ำกับตัวบน |
+| `JWT_ACCESS_TTL` | `900` | อายุ access token (วินาที) |
+| `JWT_REFRESH_TTL` | `604800` | อายุ refresh token (วินาที) |
+
+ค่าทั้งหมดถูกตรวจตอนเริ่มระบบ ถ้าขาดหรือผิดรูปแบบ แอปจะไม่ขึ้น
+
+## ฐานข้อมูล
+
+Postgres ของโปรเจกต์รันใน Docker ที่ host port **5433** (ไม่ใช่ 5432)
+user / password สำหรับเครื่อง dev คือ `jingabel` / `jingabel`
+
+| ฐาน | ใช้ทำอะไร |
+| --- | --- |
+| `jingabel` | พัฒนา |
+| `jingabel_test` | e2e test — **ถูกล้าง schema ทุกครั้งที่รัน** ห้ามเก็บข้อมูล |
+
+- `synchronize` ปิดไว้ การเปลี่ยน schema ทำผ่าน migration เท่านั้น
+- entity และ migration ใหม่ต้องเพิ่มใน `src/database/typeorm.options.ts`
+- ถ้า `NODE_ENV=test` ชื่อฐานต้องลงท้ายด้วย `_test` ไม่อย่างนั้นจะไม่ยอมเชื่อมต่อ
+
+## API
+
+ทุก route อยู่ใต้ `/api`
+
+| Method | Path | ต้อง login | ทำอะไร |
+| --- | --- | --- | --- |
+| POST | `/auth/register` | ไม่ | สมัครเป็น Shop Owner แล้วออก token |
+| POST | `/auth/login` | ไม่ | ตรวจรหัสผ่าน แล้วออก token |
+| POST | `/auth/refresh` | ไม่ (ใช้ refresh cookie) | ออก token คู่ใหม่ และยกเลิก refresh token ตัวเดิม |
+| POST | `/auth/logout` | ไม่ (ใช้ refresh cookie) | ยกเลิก session และล้าง cookie |
+| GET | `/auth/me` | ใช่ | ข้อมูลผู้ใช้ที่เรียกเข้ามา |
+
+## Authentication ทำงานอย่างไร
+
+- **Token อยู่ใน httpOnly cookie เท่านั้น** (`access_token`, `refresh_token`) ไม่ส่งกลับใน response body
+  client ที่ไม่ใช่ browser ส่ง access token ผ่าน header `Authorization: Bearer` ได้
+- **ทุก route ต้องมี access token โดยค่าเริ่มต้น** เพราะ `JwtAuthGuard` เป็น global guard
+  route ที่เปิดสาธารณะต้องติด `@Public()`
+- **อ่านผู้ใช้ที่เรียกเข้ามา** ด้วย `@CurrentUser() user: AuthUser` ได้ `{ id, email, role }`
+- **Refresh token หมุนทุกครั้งที่ใช้** ถ้ามีการนำตัวเก่ามาใช้ซ้ำ ทุก session ของผู้ใช้นั้นจะถูกยกเลิก
+- **Rate limit** 120 ครั้งต่อนาทีทั้งระบบ และ 10 ครั้งต่อนาทีสำหรับ login / register
+- รหัสผ่าน hash ด้วย argon2
+
+```ts
+@Controller('branches')
+export class BranchesController {
+  @Get()
+  list(@CurrentUser() user: AuthUser) {
+    // user.id, user.email, user.role
+  }
+}
 ```
 
-## Deployment
+## โครงสร้าง
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```
+src/
+├─ main.ts                 # จุดเริ่มระบบ
+├─ app.module.ts
+├─ app.setup.ts            # prefix, cookie, validation, CORS (ใช้ร่วมกับ e2e test)
+├─ config/env.ts           # ตรวจ environment variables
+├─ database/
+│  ├─ typeorm.options.ts   # รายการ entity + migration
+│  ├─ data-source.ts       # สำหรับ TypeORM CLI เท่านั้น
+│  └─ migrations/
+├─ auth/
+│  ├─ auth.controller.ts
+│  ├─ auth.service.ts
+│  ├─ refresh-session.store.ts
+│  ├─ decorators/          # @Public(), @CurrentUser()
+│  ├─ guards/              # JwtAuthGuard
+│  └─ dto/
+└─ users/
+   ├─ user.entity.ts
+   └─ users.service.ts
+test/
+└─ auth.e2e-spec.ts
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## ข้อจำกัดที่ยังมีอยู่
 
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- Refresh session และตัวนับ rate limit เก็บใน memory: restart แล้วทุกคนต้อง login ใหม่ และยังรันหลาย instance ไม่ได้ (แผนคือย้ายไป Redis)
+- register ยังไม่สร้างร้านจาก `shopName`
+- ยังไม่มีการตรวจสิทธิ์ตาม role และการจำกัดข้อมูลตามร้าน / สาขา
+- ยังไม่มีลืมรหัสผ่าน, คำเชิญผู้ใช้, audit log, health check

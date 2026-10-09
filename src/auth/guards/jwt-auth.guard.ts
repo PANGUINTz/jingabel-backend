@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
-import { IS_PUBLIC_KEY } from '../../common/decorators/public.decorator.js';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
 import { Env } from '../../config/env.js';
 import {
   ACCESS_TOKEN_COOKIE,

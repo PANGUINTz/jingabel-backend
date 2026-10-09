@@ -11,8 +11,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
-import { CurrentUser } from '../common/decorators/current-user.decorator.js';
-import { Public } from '../common/decorators/public.decorator.js';
+import { CurrentUser } from './decorators/current-user.decorator.js';
+import { Public } from './decorators/public.decorator.js';
 import { Env } from '../config/env.js';
 import type { PublicUser } from '../users/user.entity.js';
 import { AuthService, type AuthResult } from './auth.service.js';

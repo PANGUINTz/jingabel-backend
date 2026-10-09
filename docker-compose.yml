@@ -1,0 +1,43 @@
+# Local use only — the database credentials here are not secrets.
+#
+#   docker compose up -d --build     start Postgres + the API (http://localhost:4000/api)
+#   docker compose up -d postgres    start only Postgres, for `npm run start:dev` on the host
+#
+# The API does not migrate on startup. Apply migrations explicitly:
+#   docker compose run --rm api npx typeorm migration:run -d dist/database/data-source.js
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: jingabel
+      POSTGRES_PASSWORD: jingabel
+      POSTGRES_DB: jingabel
+    ports:
+      # Host port 5433 so it doesn't clash with a Postgres already on 5432.
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U jingabel -d jingabel']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    # JWT secrets, CORS origin and token lifetimes come from .env (copy .env.example).
+    env_file: .env
+    environment:
+      PORT: 4000
+      # Inside the compose network Postgres is reached by service name, not localhost:5433.
+      DATABASE_URL: postgres://jingabel:jingabel@postgres:5432/jingabel
+    ports:
+      - '4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

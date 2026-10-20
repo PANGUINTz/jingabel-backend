@@ -1,7 +1,9 @@
-import { plainToInstance } from 'class-transformer';
+import { plainToInstance, Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
+  IsOptional,
   IsString,
   Matches,
   Max,
@@ -32,6 +34,16 @@ export class Env {
   @IsString()
   @MinLength(32)
   JWT_REFRESH_SECRET: string;
+
+  // Defaults to on outside production. Reads the raw value from `obj` because
+  // implicit conversion has already turned the string "false" into true.
+  @IsOptional()
+  @Transform(({ obj }: { obj: Record<string, unknown> }) => {
+    const raw = obj.SWAGGER_ENABLED;
+    return raw === 'true' ? true : raw === 'false' ? false : raw;
+  })
+  @IsBoolean()
+  SWAGGER_ENABLED?: boolean;
 
   // Lifetimes are in seconds.
   @IsInt()

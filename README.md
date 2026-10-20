@@ -18,6 +18,8 @@ npm run migration:run   # สร้างตาราง
 npm run start:dev       # http://localhost:4000/api
 ```
 
+เอกสาร API (Swagger) อยู่ที่ http://localhost:4000/api/docs และ OpenAPI JSON ที่ `/api/docs-json`
+
 หรือรันทั้ง Postgres และ API ใน Docker (API ไม่รัน migration เองตอนเริ่ม):
 
 ```bash
@@ -32,6 +34,7 @@ docker compose run --rm api npx typeorm migration:run -d dist/database/data-sour
 | `npm run start:dev` | รันแบบ watch |
 | `npm run build` | build ไปที่ `dist/` |
 | `npm run lint` | oxlint |
+| `npm test` | unit test |
 | `npm run test:e2e` | e2e test กับฐาน `jingabel_test` (ต้อง `npm run db:up` ก่อน) |
 | `npm run migration:run` | รัน migration ที่ค้างอยู่ |
 | `npm run migration:revert` | ย้อน migration ล่าสุด |
@@ -47,6 +50,7 @@ docker compose run --rm api npx typeorm migration:run -d dist/database/data-sour
 | `DATABASE_URL` | — | ต้องกำหนด เช่น `postgres://jingabel:jingabel@localhost:5433/jingabel` |
 | `JWT_ACCESS_SECRET` | — | ต้องกำหนด อย่างน้อย 32 ตัวอักษร |
 | `JWT_REFRESH_SECRET` | — | ต้องกำหนด อย่างน้อย 32 ตัวอักษร และไม่ซ้ำกับตัวบน |
+| `SWAGGER_ENABLED` | เปิด ยกเว้นเมื่อ `NODE_ENV=production` | `true` / `false` เปิด-ปิดหน้า `/api/docs` |
 | `JWT_ACCESS_TTL` | `900` | อายุ access token (วินาที) |
 | `JWT_REFRESH_TTL` | `604800` | อายุ refresh token (วินาที) |
 
@@ -68,7 +72,10 @@ user / password สำหรับเครื่อง dev คือ `jingabel`
 
 ## API
 
-ทุก route อยู่ใต้ `/api`
+ทุก route อยู่ใต้ `/api` รายละเอียด request / response ทั้งหมดดูได้ที่ Swagger (`/api/docs`)
+
+ทดลองเรียกจาก Swagger UI ได้เลย: เรียก `POST /auth/login` ก่อน browser จะเก็บ cookie ไว้
+แล้ว route ที่ต้อง login จะใช้ cookie นั้นอัตโนมัติ
 
 | Method | Path | ต้อง login | ทำอะไร |
 | --- | --- | --- | --- |
@@ -77,6 +84,14 @@ user / password สำหรับเครื่อง dev คือ `jingabel`
 | POST | `/auth/refresh` | ไม่ (ใช้ refresh cookie) | ออก token คู่ใหม่ และยกเลิก refresh token ตัวเดิม |
 | POST | `/auth/logout` | ไม่ (ใช้ refresh cookie) | ยกเลิก session และล้าง cookie |
 | GET | `/auth/me` | ใช่ | ข้อมูลผู้ใช้ที่เรียกเข้ามา |
+
+### เพิ่ม endpoint ใหม่
+
+ทุก endpoint ต้องมีเอกสารใน Swagger — test `test/swagger.e2e-spec.ts` ตรวจรายการ path ไว้ ถ้าเพิ่ม route แล้วไม่อัปเดตจะไม่ผ่าน
+
+- controller ติด `@ApiTags()` และแต่ละ route ติด `@ApiOperation()` กับ response ที่เป็นไปได้ (`@ApiOkResponse()`, `@ApiUnauthorizedResponse()` ฯลฯ ใช้ `ApiErrorResponse` เป็น type ของ error)
+- route ที่ต้อง login ติด `@ApiCookieAuth('access_token')` และ `@ApiBearerAuth()`
+- ทุก field ใน DTO ติด `@ApiProperty()` และ response ต้องเป็น class (ไม่ใช่ `interface` / `type`) เพื่อให้ Swagger อ่านได้
 
 ## Authentication ทำงานอย่างไร
 
@@ -107,6 +122,7 @@ src/
 ├─ app.module.ts
 ├─ app.setup.ts            # prefix, cookie, validation, CORS (ใช้ร่วมกับ e2e test)
 ├─ config/env.ts           # ตรวจ environment variables
+├─ common/swagger/         # ตั้งค่า Swagger + schema ของ error
 ├─ database/
 │  ├─ typeorm.options.ts   # รายการ entity + migration
 │  ├─ data-source.ts       # สำหรับ TypeORM CLI เท่านั้น
@@ -117,12 +133,14 @@ src/
 │  ├─ refresh-session.store.ts
 │  ├─ decorators/          # @Public(), @CurrentUser()
 │  ├─ guards/              # JwtAuthGuard
-│  └─ dto/
+│  └─ dto/                 # request DTO + AuthResponse
 └─ users/
    ├─ user.entity.ts
-   └─ users.service.ts
+   ├─ users.service.ts
+   └─ dto/user.response.ts
 test/
-└─ auth.e2e-spec.ts
+├─ auth.e2e-spec.ts
+└─ swagger.e2e-spec.ts
 ```
 
 ## ข้อจำกัดที่ยังมีอยู่
@@ -131,3 +149,4 @@ test/
 - register ยังไม่สร้างร้านจาก `shopName`
 - ยังไม่มีการตรวจสิทธิ์ตาม role และการจำกัดข้อมูลตามร้าน / สาขา
 - ยังไม่มีลืมรหัสผ่าน, คำเชิญผู้ใช้, audit log, health check
+- Swagger เปิดอยู่ทุก environment ยกเว้น production ถ้าจะเปิดบน server ที่เข้าถึงจากภายนอกได้ ควรจำกัดการเข้าถึงก่อน

@@ -1,6 +1,7 @@
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
+import { setupSwagger } from './common/swagger/swagger.setup.js';
 import { Env } from './config/env.js';
 
 // Shared by main.ts and the e2e tests so both run the same HTTP pipeline.
@@ -14,4 +15,9 @@ export function setupApp(app: INestApplication): void {
     origin: config.get('CORS_ORIGIN', { infer: true }),
     credentials: true,
   });
+
+  const swaggerEnabled =
+    config.get('SWAGGER_ENABLED', { infer: true }) ??
+    config.get('NODE_ENV', { infer: true }) !== 'production';
+  if (swaggerEnabled) setupSwagger(app);
 }

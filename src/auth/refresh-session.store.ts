@@ -2,8 +2,6 @@ import { Injectable } from '@nestjs/common';
 
 export interface RefreshSession {
   userId: string;
-  // jti of the only refresh token currently valid for this session.
-  jti: string;
   remember: boolean;
   expiresAt: number;
 }
@@ -30,11 +28,5 @@ export class RefreshSessionStore {
 
   async delete(sid: string): Promise<void> {
     this.sessions.delete(sid);
-  }
-
-  async deleteAllForUser(userId: string): Promise<void> {
-    for (const [sid, session] of this.sessions) {
-      if (session.userId === userId) this.sessions.delete(sid);
-    }
   }
 }

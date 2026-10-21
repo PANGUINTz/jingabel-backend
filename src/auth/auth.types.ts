@@ -12,10 +12,9 @@ export interface AccessTokenPayload {
 
 export interface RefreshTokenPayload {
   sub: string;
-  // Session id — stable across rotations of the same login.
+  // Session id — one per login; logging out deletes it, which invalidates the
+  // refresh token even before it expires.
   sid: string;
-  // Unique per issued refresh token; only the latest one per session is valid.
-  jti: string;
 }
 
 // The requesting user, as verified from the access token by JwtAuthGuard.

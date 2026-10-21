@@ -1,10 +1,11 @@
 import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ACCESS_TOKEN_COOKIE } from '../../auth/auth.types.js';
+import { API_PREFIX } from '../../config/api.js';
 
-export const SWAGGER_PATH = 'api/docs';
+export const SWAGGER_PATH = `${API_PREFIX}/docs`;
 
-// Serves the UI at /api/docs and the OpenAPI JSON at /api/docs-json.
+// Serves the UI at /v1/api/docs and the OpenAPI JSON at /v1/api/docs-json.
 // The UI is same-origin with the API, so after calling /auth/login from it the
 // browser sends the auth cookies on every later "Try it out" request.
 export function setupSwagger(app: INestApplication): void {

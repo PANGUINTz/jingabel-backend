@@ -15,14 +15,22 @@ export const USER_ROLES = [
 
 export type UserRole = (typeof USER_ROLES)[number];
 
+export const USER_SLUG_LENGTH = 10;
+
 @Entity('users')
 @Check(
   'CHK_users_role',
   `"role" IN (${USER_ROLES.map((role) => `'${role}'`).join(', ')})`,
 )
+@Check('CHK_users_slug', `"slug" ~ '^[A-Za-z0-9]{${USER_SLUG_LENGTH}}$'`)
 export class User {
+  // Internal only — never sent to clients; use `slug` to refer to a user
+  // from outside (URLs, responses).
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ type: 'varchar', length: USER_SLUG_LENGTH, unique: true })
+  slug: string;
 
   // Always stored lowercased (see UsersService), so the unique index is
   // effectively case-insensitive.
@@ -46,9 +54,9 @@ export class User {
   createdAt: Date;
 }
 
-export type PublicUser = Omit<User, 'passwordHash'>;
+export type PublicUser = Omit<User, 'id' | 'passwordHash'>;
 
 export function toPublicUser(user: User): PublicUser {
-  const { passwordHash: _passwordHash, ...publicUser } = user;
+  const { id: _id, passwordHash: _passwordHash, ...publicUser } = user;
   return publicUser;
 }

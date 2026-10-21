@@ -9,7 +9,11 @@ import { JwtService } from '@nestjs/jwt';
 import argon2 from 'argon2';
 import { QueryFailedError } from 'typeorm';
 import { Env } from '../config/env.js';
-import { toPublicUser, type PublicUser, type User } from '../users/user.entity.js';
+import {
+  toPublicUser,
+  type PublicUser,
+  type User,
+} from '../users/user.entity.js';
 import { UsersService } from '../users/users.service.js';
 import type {
   AccessTokenPayload,
@@ -19,6 +23,7 @@ import type {
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { RefreshSessionStore } from './refresh-session.store.js';
+import { ProfileDto } from './dto/profile.dto.js';
 
 const EMAIL_TAKEN_MESSAGE = 'อีเมลนี้ถูกใช้งานแล้ว';
 const PG_UNIQUE_VIOLATION = '23505';
@@ -34,6 +39,14 @@ export interface AuthResult {
   user: PublicUser;
   tokens: TokenPair;
   remember: boolean;
+}
+
+export interface RefreshResult {
+  user: PublicUser;
+  accessToken: string;
+  remember: boolean;
+  // When the session (and its refresh token) ends, in ms since the epoch.
+  sessionExpiresAt: number;
 }
 
 @Injectable()
@@ -87,17 +100,13 @@ export class AuthService {
     return this.startSession(user, dto.remember ?? false);
   }
 
-  // Rotates the refresh token: the presented one is invalidated and a new pair
-  // is issued. Presenting an already-rotated token means it leaked, so every
-  // session of that user is revoked.
-  async refresh(refreshToken: string | undefined): Promise<AuthResult> {
+  // Issues a new access token only. The refresh token is not rotated: it stays
+  // valid until it expires or its session is deleted by logout.
+  async refresh(refreshToken: string | undefined): Promise<RefreshResult> {
+    console.log(refreshToken);
     const payload = await this.verifyRefreshToken(refreshToken);
     const session = await this.sessions.get(payload.sid);
     if (!session || session.userId !== payload.sub) {
-      throw new UnauthorizedException();
-    }
-    if (session.jti !== payload.jti) {
-      await this.sessions.deleteAllForUser(session.userId);
       throw new UnauthorizedException();
     }
 
@@ -107,7 +116,12 @@ export class AuthService {
       throw new UnauthorizedException();
     }
 
-    return this.issueTokens(user, payload.sid, session.remember);
+    return {
+      user: toPublicUser(user),
+      accessToken: await this.signAccessToken(user),
+      remember: session.remember,
+      sessionExpiresAt: session.expiresAt,
+    };
   }
 
   async logout(refreshToken: string | undefined): Promise<void> {
@@ -123,6 +137,10 @@ export class AuthService {
     return toPublicUser(user);
   }
 
+  async updateProfile(userId: string, body: ProfileDto) {
+    return this.users.update(userId, body)
+  }
+
   private startSession(user: User, remember: boolean): Promise<AuthResult> {
     return this.issueTokens(user, randomUUID(), remember);
   }
@@ -133,22 +151,10 @@ export class AuthService {
     remember: boolean,
   ): Promise<AuthResult> {
     const refreshTtl = this.config.get('JWT_REFRESH_TTL', { infer: true });
-    const accessPayload: AccessTokenPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    };
-    const refreshPayload: RefreshTokenPayload = {
-      sub: user.id,
-      sid,
-      jti: randomUUID(),
-    };
+    const refreshPayload: RefreshTokenPayload = { sub: user.id, sid };
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwt.signAsync(accessPayload, {
-        secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
-        expiresIn: this.config.get('JWT_ACCESS_TTL', { infer: true }),
-      }),
+      this.signAccessToken(user),
       this.jwt.signAsync(refreshPayload, {
         secret: this.config.get('JWT_REFRESH_SECRET', { infer: true }),
         expiresIn: refreshTtl,
@@ -157,7 +163,6 @@ export class AuthService {
 
     await this.sessions.set(sid, {
       userId: user.id,
-      jti: refreshPayload.jti,
       remember,
       expiresAt: Date.now() + refreshTtl * 1000,
     });
@@ -167,6 +172,18 @@ export class AuthService {
       tokens: { accessToken, refreshToken },
       remember,
     };
+  }
+
+  private signAccessToken(user: User): Promise<string> {
+    const payload: AccessTokenPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+    return this.jwt.signAsync(payload, {
+      secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
+      expiresIn: this.config.get('JWT_ACCESS_TTL', { infer: true }),
+    });
   }
 
   private async verifyRefreshToken(

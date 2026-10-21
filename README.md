@@ -15,10 +15,10 @@ npm install
 cp .env.example .env    # แล้วใส่ JWT_ACCESS_SECRET / JWT_REFRESH_SECRET (openssl rand -hex 32)
 npm run db:up           # Postgres ใน Docker ที่ localhost:5433
 npm run migration:run   # สร้างตาราง
-npm run start:dev       # http://localhost:4000/api
+npm run start:dev       # http://localhost:4000/v1/api
 ```
 
-เอกสาร API (Swagger) อยู่ที่ http://localhost:4000/api/docs และ OpenAPI JSON ที่ `/api/docs-json`
+เอกสาร API (Swagger) อยู่ที่ http://localhost:4000/v1/api/docs และ OpenAPI JSON ที่ `/v1/api/docs-json`
 
 หรือรันทั้ง Postgres และ API ใน Docker (API ไม่รัน migration เองตอนเริ่ม):
 
@@ -50,7 +50,7 @@ docker compose run --rm api npx typeorm migration:run -d dist/database/data-sour
 | `DATABASE_URL` | — | ต้องกำหนด เช่น `postgres://jingabel:jingabel@localhost:5433/jingabel` |
 | `JWT_ACCESS_SECRET` | — | ต้องกำหนด อย่างน้อย 32 ตัวอักษร |
 | `JWT_REFRESH_SECRET` | — | ต้องกำหนด อย่างน้อย 32 ตัวอักษร และไม่ซ้ำกับตัวบน |
-| `SWAGGER_ENABLED` | เปิด ยกเว้นเมื่อ `NODE_ENV=production` | `true` / `false` เปิด-ปิดหน้า `/api/docs` |
+| `SWAGGER_ENABLED` | เปิด ยกเว้นเมื่อ `NODE_ENV=production` | `true` / `false` เปิด-ปิดหน้า `/v1/api/docs` |
 | `JWT_ACCESS_TTL` | `900` | อายุ access token (วินาที) |
 | `JWT_REFRESH_TTL` | `604800` | อายุ refresh token (วินาที) |
 
@@ -72,7 +72,7 @@ user / password สำหรับเครื่อง dev คือ `jingabel`
 
 ## API
 
-ทุก route อยู่ใต้ `/api` รายละเอียด request / response ทั้งหมดดูได้ที่ Swagger (`/api/docs`)
+ทุก route อยู่ใต้ `/v1/api` (ตั้งที่ `src/config/api.ts`) รายละเอียด request / response ทั้งหมดดูได้ที่ Swagger (`/v1/api/docs`)
 
 ทดลองเรียกจาก Swagger UI ได้เลย: เรียก `POST /auth/login` ก่อน browser จะเก็บ cookie ไว้
 แล้ว route ที่ต้อง login จะใช้ cookie นั้นอัตโนมัติ
@@ -81,7 +81,7 @@ user / password สำหรับเครื่อง dev คือ `jingabel`
 | --- | --- | --- | --- |
 | POST | `/auth/register` | ไม่ | สมัครเป็น Shop Owner แล้วออก token |
 | POST | `/auth/login` | ไม่ | ตรวจรหัสผ่าน แล้วออก token |
-| POST | `/auth/refresh` | ไม่ (ใช้ refresh cookie) | ออก token คู่ใหม่ และยกเลิก refresh token ตัวเดิม |
+| POST | `/auth/refresh` | ไม่ (ใช้ refresh cookie) | ออก access token ใหม่ (refresh token เดิมใช้ต่อได้) |
 | POST | `/auth/logout` | ไม่ (ใช้ refresh cookie) | ยกเลิก session และล้าง cookie |
 | GET | `/auth/me` | ใช่ | ข้อมูลผู้ใช้ที่เรียกเข้ามา |
 
@@ -99,8 +99,10 @@ user / password สำหรับเครื่อง dev คือ `jingabel`
   client ที่ไม่ใช่ browser ส่ง access token ผ่าน header `Authorization: Bearer` ได้
 - **ทุก route ต้องมี access token โดยค่าเริ่มต้น** เพราะ `JwtAuthGuard` เป็น global guard
   route ที่เปิดสาธารณะต้องติด `@Public()`
+- **อ้างอิงผู้ใช้จากภายนอกด้วย `slug`** (สุ่ม 10 ตัวจาก a-z, A-Z, 0-9) — `id` (uuid) ใช้ภายในเท่านั้น ไม่ถูกส่งออกใน response
 - **อ่านผู้ใช้ที่เรียกเข้ามา** ด้วย `@CurrentUser() user: AuthUser` ได้ `{ id, email, role }`
-- **Refresh token หมุนทุกครั้งที่ใช้** ถ้ามีการนำตัวเก่ามาใช้ซ้ำ ทุก session ของผู้ใช้นั้นจะถูกยกเลิก
+- **อายุ cookie เท่ากับอายุ session** (ไม่ติ๊ก "จดจำฉัน" = session cookie, ติ๊ก = 7 วัน) ทั้ง `access_token` และ `refresh_token` — JWT ใน `access_token` ยังหมดอายุใน 15 นาทีตามเดิม frontend ใช้ "มี cookie หรือไม่" ตัดสินว่า login อยู่
+- **`/auth/refresh` ออกแค่ access token ใหม่** ไม่ออก refresh token ใหม่ refresh token เดิมใช้ต่อได้จนหมดอายุ (7 วันนับจาก login) หรือจนออกจากระบบ
 - **Rate limit** 120 ครั้งต่อนาทีทั้งระบบ และ 10 ครั้งต่อนาทีสำหรับ login / register
 - รหัสผ่าน hash ด้วย argon2
 

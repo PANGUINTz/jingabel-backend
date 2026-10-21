@@ -2,8 +2,12 @@ import { ApiProperty } from '@nestjs/swagger';
 import { USER_ROLES, type PublicUser, type UserRole } from '../user.entity.js';
 
 export class UserResponse implements PublicUser {
-  @ApiProperty({ format: 'uuid' })
-  id: string;
+  @ApiProperty({
+    example: 'aZ3kP9qL0x',
+    pattern: '^[A-Za-z0-9]{10}$',
+    description: 'รหัสอ้างอิงผู้ใช้ (ใช้แทน id)',
+  })
+  slug: string;
 
   @ApiProperty({ example: 'owner@shop.com' })
   email: string;

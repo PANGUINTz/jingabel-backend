@@ -2,13 +2,14 @@ import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
 import { setupSwagger } from './common/swagger/swagger.setup.js';
+import { API_PREFIX } from './config/api.js';
 import { Env } from './config/env.js';
 
 // Shared by main.ts and the e2e tests so both run the same HTTP pipeline.
 export function setupApp(app: INestApplication): void {
   const config = app.get<ConfigService<Env, true>>(ConfigService);
 
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix(API_PREFIX);
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({

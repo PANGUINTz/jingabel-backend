@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Req,
   Res,
@@ -27,6 +28,7 @@ import type { CookieOptions, Request, Response } from 'express';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { ApiErrorResponse } from '../common/swagger/api-error.response.js';
+import { API_PREFIX } from '../config/api.js';
 import { Env } from '../config/env.js';
 import { UserResponse } from '../users/dto/user.response.js';
 import type { PublicUser } from '../users/user.entity.js';
@@ -39,9 +41,9 @@ import {
 import { AuthResponse } from './dto/auth.response.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { ProfileDto } from './dto/profile.dto.js';
 
 // The refresh token is only ever sent to the auth endpoints.
-const REFRESH_COOKIE_PATH = '/api/auth';
 
 const CREDENTIALS_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
 
@@ -108,11 +110,10 @@ export class AuthController {
   }
 
   @ApiOperation({
-    summary: 'ขอ token คู่ใหม่',
+    summary: 'ขอ access token ใหม่',
     description:
-      'ใช้ cookie `refresh_token` ไม่ต้องส่ง body. refresh token เดิมใช้ไม่ได้อีก; ' +
-      'ถ้านำตัวเก่ามาใช้ซ้ำ ทุก session ของผู้ใช้นั้นจะถูกยกเลิก. ' +
-      `${SETS_COOKIES}`,
+      'ใช้ cookie `refresh_token` ไม่ต้องส่ง body. ตั้ง cookie `access_token` ใหม่เท่านั้น — ' +
+      'refresh token เดิมใช้ต่อได้จนหมดอายุหรือออกจากระบบ',
   })
   @ApiOkResponse({ type: AuthResponse })
   @ApiUnauthorizedResponse({
@@ -129,7 +130,12 @@ export class AuthController {
   ): Promise<AuthResponse> {
     try {
       const result = await this.auth.refresh(readRefreshToken(req));
-      return this.respondWithSession(res, result);
+      this.setAccessCookie(
+        res,
+        result.accessToken,
+        result.remember ? result.sessionExpiresAt - Date.now() : undefined,
+      );
+      return { user: result.user };
     } catch (error) {
       this.clearCookies(res);
       throw error;
@@ -166,22 +172,48 @@ export class AuthController {
     return this.auth.getProfile(user.id);
   }
 
+  @ApiOperation({ summary: 'อัพเดตข้อมูลที่ login อยู่' })
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiBearerAuth()
+  @ApiOkResponse({ type: UserResponse })
+  @ApiUnauthorizedResponse({
+    description: 'ไม่มี access token หรือหมดอายุ',
+    type: ApiErrorResponse,
+  })
+  @Patch('profile')
+  updateProfile(@CurrentUser() user: AuthUser, @Body() dto: ProfileDto) {
+    return this.auth.updateProfile(user.id, dto);
+  }
+
+
   private respondWithSession(res: Response, result: AuthResult): AuthResponse {
     const { accessToken, refreshToken } = result.tokens;
+    const maxAge = result.remember
+      ? this.config.get('JWT_REFRESH_TTL', { infer: true }) * 1000
+      : undefined;
+    this.setAccessCookie(res, accessToken, maxAge);
+    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
+      ...this.baseCookieOptions(),
+      ...(maxAge !== undefined && { maxAge }),
+    });
+    return { user: result.user };
+  }
+
+  // Both cookies live as long as the session: without "remember me" (maxAge
+  // undefined) they are session cookies, gone when the browser closes. The
+  // access cookie outlives its JWT on purpose — the frontend treats a missing
+  // access_token cookie as "not signed in", while an expired JWT inside it just
+  // gets a 401 and a refresh.
+  private setAccessCookie(
+    res: Response,
+    accessToken: string,
+    maxAge: number | undefined,
+  ): void {
     res.cookie(ACCESS_TOKEN_COOKIE, accessToken, {
       ...this.baseCookieOptions(),
       path: '/',
-      maxAge: this.config.get('JWT_ACCESS_TTL', { infer: true }) * 1000,
+      ...(maxAge !== undefined && { maxAge }),
     });
-    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
-      ...this.baseCookieOptions(),
-      path: REFRESH_COOKIE_PATH,
-      // Without "remember me" this is a session cookie, gone when the browser closes.
-      ...(result.remember && {
-        maxAge: this.config.get('JWT_REFRESH_TTL', { infer: true }) * 1000,
-      }),
-    });
-    return { user: result.user };
   }
 
   private clearCookies(res: Response): void {
@@ -191,7 +223,7 @@ export class AuthController {
     });
     res.clearCookie(REFRESH_TOKEN_COOKIE, {
       ...this.baseCookieOptions(),
-      path: REFRESH_COOKIE_PATH,
+      path: '/',
     });
   }
 

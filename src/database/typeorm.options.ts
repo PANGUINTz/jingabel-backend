@@ -1,6 +1,7 @@
 import type { DataSourceOptions } from 'typeorm';
 import { User } from '../users/user.entity.js';
 import { CreateUsers1791504000000 } from './migrations/1791504000000-create-users.js';
+import { AddUserSlug1792505743000 } from './migrations/1792505743000-add-user-slug.js';
 
 interface DatabaseEnv {
   DATABASE_URL: string;
@@ -22,7 +23,7 @@ export function buildTypeOrmOptions(env: DatabaseEnv): DataSourceOptions {
     type: 'postgres',
     url: env.DATABASE_URL,
     entities: [User],
-    migrations: [CreateUsers1791504000000],
+    migrations: [CreateUsers1791504000000, AddUserSlug1792505743000],
     // Schema changes only ever happen through migrations.
     synchronize: false,
     uuidExtension: 'pgcrypto',

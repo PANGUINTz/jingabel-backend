@@ -23,15 +23,15 @@ describe('Swagger (e2e)', () => {
 
   it('documents every route the app exposes', async () => {
     const res = await request(app.getHttpServer())
-      .get('/api/docs-json')
+      .get('/v1/api/docs-json')
       .expect(200);
 
     expect(Object.keys(res.body.paths).sort()).toEqual([
-      '/api/auth/login',
-      '/api/auth/logout',
-      '/api/auth/me',
-      '/api/auth/refresh',
-      '/api/auth/register',
+      '/v1/api/auth/login',
+      '/v1/api/auth/logout',
+      '/v1/api/auth/me',
+      '/v1/api/auth/refresh',
+      '/v1/api/auth/register',
     ]);
     expect(res.body.components.schemas).toHaveProperty('AuthResponse');
     expect(res.body.components.schemas.LoginDto.required).toEqual([
@@ -41,6 +41,6 @@ describe('Swagger (e2e)', () => {
   });
 
   it('serves the UI without a login', async () => {
-    await request(app.getHttpServer()).get('/api/docs').expect(200);
+    await request(app.getHttpServer()).get('/v1/api/docs').expect(200);
   });
 });

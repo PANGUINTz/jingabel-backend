@@ -6,11 +6,12 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { RefreshSessionStore } from './refresh-session.store.js';
+import { UserSessionsModule } from '../user_sessions/user_sessions.module.js';
 
 @Module({
   // Secrets and lifetimes are passed per sign/verify call, since access and
   // refresh tokens use different ones.
-  imports: [UsersModule, JwtModule.register({})],
+  imports: [UsersModule, UserSessionsModule, JwtModule.register({})],
   controllers: [AuthController],
   providers: [
     AuthService,

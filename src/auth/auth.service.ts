@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -23,7 +26,13 @@ import type {
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { RefreshSessionStore } from './refresh-session.store.js';
-import { ProfileDto } from './dto/profile.dto.js';
+import { PasswordDto, ProfileDto } from './dto/profile.dto.js';
+import {
+  UserSessionsService,
+  type SessionClient,
+} from '../user_sessions/user_sessions.service.js';
+import type { SessionResponse } from '../user_sessions/dto/session.response.js';
+import type { DeviceType } from '../user_sessions/device.js';
 
 const EMAIL_TAKEN_MESSAGE = 'อีเมลนี้ถูกใช้งานแล้ว';
 const PG_UNIQUE_VIOLATION = '23505';
@@ -57,12 +66,13 @@ export class AuthService {
 
   constructor(
     private readonly users: UsersService,
+    private readonly userSessionService: UserSessionsService,
     private readonly sessions: RefreshSessionStore,
     private readonly jwt: JwtService,
     private readonly config: ConfigService<Env, true>,
   ) {}
 
-  async register(dto: RegisterDto): Promise<AuthResult> {
+  async register(dto: RegisterDto, client: SessionClient): Promise<AuthResult> {
     if (await this.users.findByEmail(dto.email)) {
       throw new ConflictException(EMAIL_TAKEN_MESSAGE);
     }
@@ -84,10 +94,10 @@ export class AuthService {
         throw error;
       });
 
-    return this.startSession(user, false);
+    return this.startSession(user, false, client);
   }
 
-  async login(dto: LoginDto): Promise<AuthResult> {
+  async login(dto: LoginDto, client: SessionClient): Promise<AuthResult> {
     const user = await this.users.findByEmail(dto.email);
     const passwordMatches = await argon2.verify(
       user?.passwordHash ?? (await this.dummyHash),
@@ -97,18 +107,29 @@ export class AuthService {
       throw new UnauthorizedException('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
     }
 
-    return this.startSession(user, dto.remember ?? false);
+    return this.startSession(user, dto.remember ?? false, client);
   }
 
   // Issues a new access token only. The refresh token is not rotated: it stays
   // valid until it expires or its session is deleted by logout.
   async refresh(refreshToken: string | undefined): Promise<RefreshResult> {
-    console.log(refreshToken);
+    if (!refreshToken) throw new UnauthorizedException();
     const payload = await this.verifyRefreshToken(refreshToken);
     const session = await this.sessions.get(payload.sid);
     if (!session || session.userId !== payload.sub) {
+      console.log("ไม่มีเซสซั่น");
       throw new UnauthorizedException();
     }
+
+    // Revoked by logout or "sign out other devices", or past its expiry.
+    const userSession =
+      await this.userSessionService.findActiveByToken(refreshToken);
+    if (!userSession) {
+      console.log("ไม่มี refresh token");
+      await this.sessions.delete(payload.sid);
+      throw new UnauthorizedException();
+    }
+    await this.userSessionService.touch(userSession.id);
 
     const user = await this.users.findById(session.userId);
     if (!user) {
@@ -128,7 +149,78 @@ export class AuthService {
     const payload = await this.verifyRefreshToken(refreshToken).catch(
       () => undefined,
     );
-    if (payload) await this.sessions.delete(payload.sid);
+    if (payload && refreshToken) {
+      await this.userSessionService.revoke(refreshToken);
+      await this.sessions.delete(payload.sid);
+    }
+  }
+
+  // Signs out every other device of this user; the caller stays signed in.
+  async logoutAll(
+    userId: string,
+    refreshToken: string | undefined,
+  ): Promise<void> {
+    if (!refreshToken) {
+      throw new BadRequestException('ไม่มี token ในการออก');
+    }
+
+    const payload = await this.verifyRefreshToken(refreshToken);
+    // The refresh cookie must belong to the same user as the access token.
+    if (payload.sub !== userId) {
+      throw new ForbiddenException('ไม่มีสิทธิ์ในการใช้งานนี้');
+    }
+
+    const user = await this.users.findById(userId);
+    if (!user) {
+      throw new ForbiddenException('ไม่มีสิทธิ์ในการใช้งานนี้');
+    }
+
+    await this.userSessionService.revokeAllExcept(user.slug, refreshToken);
+  }
+
+  // Signs out one of the user's other devices. The current device uses logout,
+  // which also clears its cookies.
+  async revokeSession(
+    userId: string,
+    sessionId: number,
+    refreshToken: string | undefined,
+  ): Promise<void> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new UnauthorizedException();
+
+    // Someone else's session looks the same as a missing one.
+    const session = await this.userSessionService.findActiveById(
+      user.slug,
+      sessionId,
+    );
+    if (!session) throw new NotFoundException('ไม่พบอุปกรณ์นี้');
+    if (this.userSessionService.isSessionOf(session, refreshToken)) {
+      throw new BadRequestException(
+        'ใช้ปุ่มออกจากระบบเพื่อออกจากอุปกรณ์นี้',
+      );
+    }
+
+    await this.userSessionService.revokeById(session.id);
+  }
+
+  async listSessions(
+    userId: string,
+    refreshToken: string | undefined,
+  ): Promise<SessionResponse[]> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new UnauthorizedException();
+
+    const sessions = await this.userSessionService.findAllActive(user.slug);
+    return sessions.map((session) => ({
+      id: session.id,
+      deviceName: session.deviceName ?? null,
+      deviceType: (session.deviceType as DeviceType | null) ?? null,
+      ipAddress: session.ipAddress ?? null,
+      location: session.location ?? null,
+      createdAt: session.createdAt,
+      lastActiveAt: session.lastActiveAt,
+      current: this.userSessionService.isSessionOf(session, refreshToken),
+    }));
   }
 
   async getProfile(userId: string): Promise<PublicUser> {
@@ -141,14 +233,47 @@ export class AuthService {
     return this.users.update(userId, body)
   }
 
-  private startSession(user: User, remember: boolean): Promise<AuthResult> {
-    return this.issueTokens(user, randomUUID(), remember);
+  async changePassword(userId: string, body: PasswordDto) {
+    const user = await this.users.findById(userId);
+    if (!user) throw new UnauthorizedException();
+
+    const passwordValid = await argon2.verify(
+      user?.passwordHash ?? (await this.dummyHash),
+      body.currentPassword,
+    );
+    if(!passwordValid) {
+      throw new BadRequestException('รหัสผ่านเดิมไม่ถูกต้อง')
+    }
+
+    if(body.currentPassword === body.newPassword) {
+      throw new BadRequestException('รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม')
+    }
+
+    if(body.newPassword !== body.confirmPassword) {
+      throw new BadRequestException('รหัสผ่านไม่ตรงกัน')
+    }
+
+    if(!this.isValidPassword(body.newPassword)) {
+      throw new BadRequestException('รหัสผ่านควรมีอย่างน้อย 8 ตัวอักษรและควรมีตัวอักษรภาษาอังกฤษและตัวเลข')
+    }
+
+    const passwordHash = await argon2.hash(body.newPassword)
+    return this.users.changePassword(userId, { passwordHash })
+  }
+
+  private startSession(
+    user: User,
+    remember: boolean,
+    client: SessionClient,
+  ): Promise<AuthResult> {
+    return this.issueTokens(user, randomUUID(), remember, client);
   }
 
   private async issueTokens(
     user: User,
     sid: string,
     remember: boolean,
+    client: SessionClient,
   ): Promise<AuthResult> {
     const refreshTtl = this.config.get('JWT_REFRESH_TTL', { infer: true });
     const refreshPayload: RefreshTokenPayload = { sub: user.id, sid };
@@ -161,10 +286,13 @@ export class AuthService {
       }),
     ]);
 
-    await this.sessions.set(sid, {
-      userId: user.id,
-      remember,
-      expiresAt: Date.now() + refreshTtl * 1000,
+    const expiresAt = Date.now() + refreshTtl * 1000;
+    await this.sessions.set(sid, { userId: user.id, remember, expiresAt });
+    await this.userSessionService.create({
+      userSlug: user.slug,
+      refreshToken,
+      expiresAt: new Date(expiresAt),
+      ...client,
     });
 
     return {
@@ -197,5 +325,13 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException();
     }
+  }
+
+  private isValidPassword(password: string): boolean {
+    const hasMinLength = password.length >= 8;
+    const hasLetter = /[A-Za-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+
+    return hasMinLength && hasLetter && hasNumber;
   }
 }

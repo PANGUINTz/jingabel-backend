@@ -1,9 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseIntPipe,
   Patch,
   Post,
   Req,
@@ -16,6 +19,8 @@ import {
   ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
@@ -28,7 +33,6 @@ import type { CookieOptions, Request, Response } from 'express';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { ApiErrorResponse } from '../common/swagger/api-error.response.js';
-import { API_PREFIX } from '../config/api.js';
 import { Env } from '../config/env.js';
 import { UserResponse } from '../users/dto/user.response.js';
 import type { PublicUser } from '../users/user.entity.js';
@@ -41,9 +45,9 @@ import {
 import { AuthResponse } from './dto/auth.response.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
-import { ProfileDto } from './dto/profile.dto.js';
-
-// The refresh token is only ever sent to the auth endpoints.
+import { PasswordDto, ProfileDto } from './dto/profile.dto.js';
+import { SessionResponse } from '../user_sessions/dto/session.response.js';
+import type { SessionClient } from '../user_sessions/user_sessions.service.js';
 
 const CREDENTIALS_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
 
@@ -80,9 +84,13 @@ export class AuthController {
   @Post('register')
   async register(
     @Body() dto: RegisterDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
-    return this.respondWithSession(res, await this.auth.register(dto));
+    return this.respondWithSession(
+      res,
+      await this.auth.register(dto, sessionClient(req)),
+    );
   }
 
   @ApiOperation({
@@ -104,9 +112,13 @@ export class AuthController {
   @Post('login')
   async login(
     @Body() dto: LoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
-    return this.respondWithSession(res, await this.auth.login(dto));
+    return this.respondWithSession(
+      res,
+      await this.auth.login(dto, sessionClient(req)),
+    );
   }
 
   @ApiOperation({
@@ -129,6 +141,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
     try {
+      console.log(readRefreshToken(req));
       const result = await this.auth.refresh(readRefreshToken(req));
       this.setAccessCookie(
         res,
@@ -137,6 +150,7 @@ export class AuthController {
       );
       return { user: result.user };
     } catch (error) {
+      console.log(error);
       this.clearCookies(res);
       throw error;
     }
@@ -148,6 +162,8 @@ export class AuthController {
       'ยกเลิก session ของ cookie `refresh_token` และล้าง cookie ทั้งสอง. สำเร็จเสมอแม้ไม่ได้ login',
   })
   @ApiNoContentResponse({ description: 'ออกจากระบบแล้ว' })
+  // Identified by the refresh cookie, so it must work after the access token
+  // has expired — the frontend calls it without the refresh-and-retry.
   @Public()
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('logout')
@@ -157,6 +173,88 @@ export class AuthController {
   ): Promise<void> {
     await this.auth.logout(readRefreshToken(req));
     this.clearCookies(res);
+  }
+
+  @ApiOperation({
+    summary: 'ออกจากระบบอุปกรณ์อื่นทั้งหมด',
+    description:
+      'ยกเลิกทุก session ของผู้ใช้ ยกเว้น session ของ cookie `refresh_token` ที่ส่งมา — ' +
+      'อุปกรณ์อื่นจะต่อ access token ไม่ได้อีก (access token ที่ออกไปแล้วใช้ได้จนหมดอายุ)',
+  })
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiBearerAuth()
+  @ApiNoContentResponse({ description: 'ออกจากระบบอุปกรณ์อื่นแล้ว' })
+  @ApiBadRequestResponse({
+    description: 'ไม่มี cookie `refresh_token`',
+    type: ApiErrorResponse,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'access token หรือ refresh token ไม่ถูกต้อง/หมดอายุ',
+    type: ApiErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'refresh token เป็นของผู้ใช้คนอื่น',
+    type: ApiErrorResponse,
+  })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('logout-all')
+  async logoutAll(
+    @Req() req: Request,
+    @CurrentUser() user: AuthUser
+  ): Promise<void> {
+    await this.auth.logoutAll(user.id, readRefreshToken(req));
+  }
+
+  @ApiOperation({
+    summary: 'รายการอุปกรณ์ที่ login อยู่',
+    description:
+      'session ที่ยังไม่ถูกยกเลิกและยังไม่หมดอายุ เรียงจากใช้งานล่าสุด — ' +
+      '`current` บอกว่าเป็นอุปกรณ์ที่เรียก (ดูจาก cookie `refresh_token`)',
+  })
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiBearerAuth()
+  @ApiOkResponse({ type: SessionResponse, isArray: true })
+  @ApiUnauthorizedResponse({
+    description: 'ไม่มี access token หรือหมดอายุ',
+    type: ApiErrorResponse,
+  })
+  @Get('sessions')
+  sessions(
+    @Req() req: Request,
+    @CurrentUser() user: AuthUser,
+  ): Promise<SessionResponse[]> {
+    return this.auth.listSessions(user.id, readRefreshToken(req));
+  }
+
+  @ApiOperation({
+    summary: 'ออกจากระบบอุปกรณ์ที่เลือก',
+    description:
+      'ยกเลิก session ของอุปกรณ์อื่นของผู้ใช้เอง — อุปกรณ์นั้นต่อ access token ไม่ได้อีก. ' +
+      'อุปกรณ์ที่เรียกอยู่ให้ใช้ `POST /auth/logout`',
+  })
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiBearerAuth()
+  @ApiNoContentResponse({ description: 'ยกเลิก session แล้ว' })
+  @ApiBadRequestResponse({
+    description: 'id ไม่ใช่ตัวเลข หรือเป็นอุปกรณ์ที่เรียกอยู่',
+    type: ApiErrorResponse,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'ไม่มี access token หรือหมดอายุ',
+    type: ApiErrorResponse,
+  })
+  @ApiNotFoundResponse({
+    description: 'ไม่มี session นี้, ถูกยกเลิกแล้ว หรือเป็นของผู้ใช้อื่น',
+    type: ApiErrorResponse,
+  })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Delete('sessions/:id')
+  async revokeSession(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+    @CurrentUser() user: AuthUser,
+  ): Promise<void> {
+    await this.auth.revokeSession(user.id, id, readRefreshToken(req));
   }
 
   @ApiOperation({ summary: 'ข้อมูลผู้ใช้ที่ login อยู่' })
@@ -185,6 +283,31 @@ export class AuthController {
     return this.auth.updateProfile(user.id, dto);
   }
 
+  @ApiOperation({ summary: 'อัพเดตรหัสผ่านที่ login อยู่' })
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiBearerAuth()
+  @ApiOkResponse({ type: UserResponse })
+  @ApiUnauthorizedResponse({
+    description: 'ไม่มี access token หรือหมดอายุ',
+    type: ApiErrorResponse,
+  })
+  @Patch('password')
+  changePassword(@CurrentUser() user: AuthUser, @Body() dto: PasswordDto) {
+    return this.auth.changePassword(user.id, dto);
+  }
+
+  @ApiOperation({ summary: 'logout บัญชีที่เลือก' })
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiBearerAuth()
+  @ApiOkResponse({ type: UserResponse })
+  @ApiUnauthorizedResponse({
+    description: 'ไม่มี access token หรือหมดอายุ',
+    type: ApiErrorResponse,
+  })
+  @Patch('revoke/:refreshToken')
+  Revoke(@Param('refreshToken') refreshToken: string ) {
+    return this.auth.logout(refreshToken);
+  }
 
   private respondWithSession(res: Response, result: AuthResult): AuthResponse {
     const { accessToken, refreshToken } = result.tokens;
@@ -194,6 +317,7 @@ export class AuthController {
     this.setAccessCookie(res, accessToken, maxAge);
     res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
       ...this.baseCookieOptions(),
+      path: '/',
       ...(maxAge !== undefined && { maxAge }),
     });
     return { user: result.user };
@@ -234,6 +358,12 @@ export class AuthController {
       sameSite: 'lax',
     };
   }
+}
+
+// req.ip is the proxy's address when the API sits behind one, unless Express's
+// "trust proxy" is set — do that when deploying behind a load balancer.
+function sessionClient(req: Request): SessionClient {
+  return { userAgent: req.get('user-agent'), ipAddress: req.ip };
 }
 
 function readRefreshToken(req: Request): string | undefined {

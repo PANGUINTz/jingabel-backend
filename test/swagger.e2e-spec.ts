@@ -29,9 +29,14 @@ describe('Swagger (e2e)', () => {
     expect(Object.keys(res.body.paths).sort()).toEqual([
       '/v1/api/auth/login',
       '/v1/api/auth/logout',
+      '/v1/api/auth/logout-all',
       '/v1/api/auth/me',
+      '/v1/api/auth/password',
+      '/v1/api/auth/profile',
       '/v1/api/auth/refresh',
       '/v1/api/auth/register',
+      '/v1/api/auth/sessions',
+      '/v1/api/auth/sessions/{id}',
     ]);
     expect(res.body.components.schemas).toHaveProperty('AuthResponse');
     expect(res.body.components.schemas.LoginDto.required).toEqual([

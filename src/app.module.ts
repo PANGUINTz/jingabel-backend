@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { Env, validateEnv } from './config/env.js';
 import { buildTypeOrmOptions } from './database/typeorm.options.js';
 import { UsersModule } from './users/users.module.js';
+import { UserSessionsModule } from './user_sessions/user_sessions.module.js';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UsersModule } from './users/users.module.js';
     ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 120 }] }),
     UsersModule,
     AuthModule,
+    UserSessionsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

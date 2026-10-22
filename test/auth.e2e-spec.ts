@@ -209,4 +209,154 @@ describe('Auth (e2e)', () => {
       .set('Cookie', refresh)
       .expect(401);
   });
+
+  // Shares one user's sessions across tests to stay under the 10/min login limit.
+  describe('sessions', () => {
+    const chrome =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+    const iphone =
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+    const user = { email: 'sessions@shop.com', password: 'passw0rd123' };
+    let laptop: string[];
+    let phone: string[];
+    let tablet: string[];
+
+    function bothCookies(res: request.Response): string[] {
+      return [cookie(res, 'access_token'), cookie(res, 'refresh_token')];
+    }
+
+    function listSessions(cookies: string[]) {
+      return request(app.getHttpServer())
+        .get('/v1/api/auth/sessions')
+        .set('Cookie', cookies)
+        .expect(200);
+    }
+
+    beforeAll(async () => {
+      const registered = await request(app.getHttpServer())
+        .post('/v1/api/auth/register')
+        .set('User-Agent', chrome)
+        .send({ ...user, shopName: 'ร้านหลายเครื่อง', fullName: 'มานี มีนา' })
+        .expect(201);
+      laptop = bothCookies(registered);
+
+      const loginFromIphone = () =>
+        request(app.getHttpServer())
+          .post('/v1/api/auth/login')
+          .set('User-Agent', iphone)
+          .send(user)
+          .expect(200);
+      phone = bothCookies(await loginFromIphone());
+      tablet = bothCookies(await loginFromIphone());
+    });
+
+    it('lists the signed-in devices and marks the current one', async () => {
+      const res = await listSessions(laptop);
+
+      expect(res.body).toHaveLength(3);
+      expect(res.body.filter((s: { current: boolean }) => s.current)).toEqual([
+        expect.objectContaining({
+          deviceName: 'Chrome บน macOS',
+          deviceType: 'desktop',
+        }),
+      ]);
+      expect(res.body).toContainEqual(
+        expect.objectContaining({
+          deviceName: 'Safari บน iOS',
+          deviceType: 'mobile',
+          current: false,
+        }),
+      );
+      expect(JSON.stringify(res.body)).not.toContain('refreshToken');
+    });
+
+    it('drops a session from the list on logout', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/api/auth/logout')
+        .set('Cookie', tablet)
+        .expect(204);
+
+      expect((await listSessions(laptop)).body).toHaveLength(2);
+      await request(app.getHttpServer())
+        .post('/v1/api/auth/refresh')
+        .set('Cookie', tablet[1])
+        .expect(401);
+    });
+
+    it('revokes one other device, but not the current or a missing one', async () => {
+      const sessions = (await listSessions(laptop)).body as {
+        id: number;
+        current: boolean;
+      }[];
+      const current = sessions.find((s) => s.current)!;
+      const phoneId = (await listSessions(phone)).body.find(
+        (s: { current: boolean }) => s.current,
+      ).id;
+
+      await request(app.getHttpServer())
+        .delete(`/v1/api/auth/sessions/${phoneId}`)
+        .set('Cookie', laptop)
+        .expect(204);
+      await request(app.getHttpServer())
+        .post('/v1/api/auth/refresh')
+        .set('Cookie', phone[1])
+        .expect(401);
+      expect((await listSessions(laptop)).body).toHaveLength(
+        sessions.length - 1,
+      );
+
+      await request(app.getHttpServer())
+        .delete(`/v1/api/auth/sessions/${phoneId}`)
+        .set('Cookie', laptop)
+        .expect(404);
+      await request(app.getHttpServer())
+        .delete(`/v1/api/auth/sessions/${current.id}`)
+        .set('Cookie', laptop)
+        .expect(400);
+    });
+
+    it('logout-all signs out every other device but keeps this one', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/api/auth/logout-all')
+        .set('Cookie', laptop)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .post('/v1/api/auth/refresh')
+        .set('Cookie', phone[1])
+        .expect(401);
+      await request(app.getHttpServer())
+        .post('/v1/api/auth/refresh')
+        .set('Cookie', laptop[1])
+        .expect(200);
+
+      const res = await listSessions(laptop);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].current).toBe(true);
+    });
+
+    it("rejects logout-all with another user's refresh token", async () => {
+      const other = await request(app.getHttpServer())
+        .post('/v1/api/auth/register')
+        .send({
+          email: 'intruder@shop.com',
+          password: 'passw0rd123',
+          shopName: 'ร้านอื่น',
+          fullName: 'คนอื่น ทั่วไป',
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/v1/api/auth/logout-all')
+        .set('Cookie', [laptop[0], cookie(other, 'refresh_token')])
+        .expect(403);
+
+      // Another user's session id is treated as missing.
+      const otherId = (await listSessions(bothCookies(other))).body[0].id;
+      await request(app.getHttpServer())
+        .delete(`/v1/api/auth/sessions/${otherId}`)
+        .set('Cookie', laptop)
+        .expect(404);
+    });
+  });
 });

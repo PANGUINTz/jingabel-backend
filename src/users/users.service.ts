@@ -18,6 +18,11 @@ export type UpdateUserInput = Pick<
   'email' | 'fullName'
 >;
 
+export type ChangePasswordInput = Pick<
+  User,
+  'passwordHash'
+>;
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -53,6 +58,16 @@ export class UsersService {
     }
   }
   async update(id: string, body: UpdateUserInput) {
+    const user = await this.findById(id);
+    if (!user) throw new UnauthorizedException();
+    try {
+      return this.users.update(id, body)
+    } catch (error) {
+      throw new InternalServerErrorException(error)
+    }
+  }
+
+  async changePassword(id: string, body: ChangePasswordInput) {
     const user = await this.findById(id);
     if (!user) throw new UnauthorizedException();
     try {

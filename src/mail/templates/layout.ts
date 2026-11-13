@@ -52,7 +52,9 @@ export function renderMailLayout(mail: MailLayout): string {
 ${mail.details
   .map((row, index) => {
     const border =
-      index < mail.details!.length - 1 ? `border-bottom:1px solid ${C.border};` : '';
+      index < mail.details!.length - 1
+        ? `border-bottom:1px solid ${C.border};`
+        : '';
     const value = row.pill
       ? `<span style="display:inline-block;padding:3px 12px;border-radius:999px;background:${C.surfaceAlt};font-size:13px;font-weight:600;color:${C.navy};">${escapeHtml(row.value)}</span>`
       : escapeHtml(row.value);

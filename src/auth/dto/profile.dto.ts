@@ -29,15 +29,23 @@ export class PasswordDto {
   @IsString()
   @MinLength(8)
   @MaxLength(128)
-  @Matches(/[A-Za-z]/, { message: 'current password must contain at least one letter' })
-  @Matches(/[0-9]/, { message: 'current password must contain at least one number' })
+  @Matches(/[A-Za-z]/, {
+    message: 'current password must contain at least one letter',
+  })
+  @Matches(/[0-9]/, {
+    message: 'current password must contain at least one number',
+  })
   currentPassword: string;
 
   @IsString()
   @MinLength(8)
   @MaxLength(128)
-  @Matches(/[A-Za-z]/, { message: 'new password must contain at least one letter' })
-  @Matches(/[0-9]/, { message: 'new password must contain at least one number' })
+  @Matches(/[A-Za-z]/, {
+    message: 'new password must contain at least one letter',
+  })
+  @Matches(/[0-9]/, {
+    message: 'new password must contain at least one number',
+  })
   newPassword: string;
 
   @IsString()

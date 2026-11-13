@@ -12,7 +12,9 @@ import { ShopBranchesService } from './shop-branches.service.js';
 
 // null for a platform admin, who has no shop role.
 export function toRoleSummary(role: UserRole): RoleSummary | null {
-  return isShopRole(role) ? { key: role, name: SHOP_ROLE_LABELS_TH[role] } : null;
+  return isShopRole(role)
+    ? { key: role, name: SHOP_ROLE_LABELS_TH[role] }
+    : null;
 }
 
 @Injectable()

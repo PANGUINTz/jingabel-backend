@@ -52,14 +52,18 @@ export class ShopsController {
     private readonly branches: ShopBranchesService,
   ) {}
 
-  @ApiOperation({ summary: 'ร้านทั้งหมดที่ผู้ใช้ปัจจุบันเป็นสมาชิก พร้อมบทบาทและสิทธิ์' })
+  @ApiOperation({
+    summary: 'ร้านทั้งหมดที่ผู้ใช้ปัจจุบันเป็นสมาชิก พร้อมบทบาทและสิทธิ์',
+  })
   @ApiOkResponse({ type: MyShopResponse, isArray: true })
   @Get('mine')
   listMine(@CurrentUser() user: AuthUser): Promise<MyShopResponse[]> {
     return this.shops.listMine(user.id);
   }
 
-  @ApiOperation({ summary: 'ข้อมูลร้าน + บทบาทและสิทธิ์ของผู้ใช้ปัจจุบันในร้านนี้' })
+  @ApiOperation({
+    summary: 'ข้อมูลร้าน + บทบาทและสิทธิ์ของผู้ใช้ปัจจุบันในร้านนี้',
+  })
   @ApiOkResponse({ type: MyShopResponse })
   @RequireShopPermissions()
   @Get(':shopSlug')
@@ -71,7 +75,8 @@ export class ShopsController {
 
   @ApiOperation({
     summary: 'สมาชิกของร้าน',
-    description: 'แบ่งหน้า เรียงตามวันที่เข้าร่วม ค้นหาจากชื่อ/อีเมล และกรองตามบทบาท/สถานะได้',
+    description:
+      'แบ่งหน้า เรียงตามวันที่เข้าร่วม ค้นหาจากชื่อ/อีเมล และกรองตามบทบาท/สถานะได้',
   })
   @ApiOkResponse({ type: ShopMembersPageResponse })
   @RequireShopPermissions('users.view')
@@ -91,7 +96,10 @@ export class ShopsController {
       'และ Branch Manager เชิญได้เฉพาะสาขาของตัวเอง',
   })
   @ApiCreatedResponse({ type: ShopMemberResponse })
-  @ApiConflictResponse({ description: 'อีเมลนี้ถูกใช้งานแล้ว', type: ApiErrorResponse })
+  @ApiConflictResponse({
+    description: 'อีเมลนี้ถูกใช้งานแล้ว',
+    type: ApiErrorResponse,
+  })
   @ApiServiceUnavailableResponse({
     description: 'ส่งอีเมลไม่สำเร็จ — ไม่มีการสร้างบัญชี',
     type: ApiErrorResponse,
@@ -111,8 +119,14 @@ export class ShopsController {
     description: 'เฉพาะสมาชิกสถานะ `pending` — ลิงก์เดิมจะใช้ไม่ได้อีก',
   })
   @ApiNoContentResponse({ description: 'ส่งแล้ว' })
-  @ApiBadRequestResponse({ description: 'ยืนยันคำเชิญแล้ว', type: ApiErrorResponse })
-  @ApiServiceUnavailableResponse({ description: 'ส่งอีเมลไม่สำเร็จ', type: ApiErrorResponse })
+  @ApiBadRequestResponse({
+    description: 'ยืนยันคำเชิญแล้ว',
+    type: ApiErrorResponse,
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'ส่งอีเมลไม่สำเร็จ',
+    type: ApiErrorResponse,
+  })
   @RequireShopPermissions('users.invite')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post(':shopSlug/members/:userSlug/invitation')
@@ -131,7 +145,10 @@ export class ShopsController {
       'ทั้งบทบาทเดิมและบทบาทใหม่ต้องต่ำกว่าผู้เปลี่ยน — platform admin ยกเว้น',
   })
   @ApiOkResponse({ type: ShopMemberResponse })
-  @ApiBadRequestResponse({ description: 'เปลี่ยนของตัวเอง', type: ApiErrorResponse })
+  @ApiBadRequestResponse({
+    description: 'เปลี่ยนของตัวเอง',
+    type: ApiErrorResponse,
+  })
   @ApiConflictResponse({
     description: 'จะทำให้ร้านไม่มี Shop Owner',
     type: ApiErrorResponse,
@@ -153,7 +170,10 @@ export class ShopsController {
       'เปลี่ยน users.status จึงมีผลกับทุกร้านของผู้ใช้. ทำได้เฉพาะกับผู้ที่อยู่ต่ำกว่าตัวเอง — platform admin ยกเว้น',
   })
   @ApiOkResponse({ type: ShopMemberResponse })
-  @ApiBadRequestResponse({ description: 'เปลี่ยนของตัวเอง', type: ApiErrorResponse })
+  @ApiBadRequestResponse({
+    description: 'เปลี่ยนของตัวเอง',
+    type: ApiErrorResponse,
+  })
   @RequireShopPermissions('users.suspend')
   @Patch(':shopSlug/members/:userSlug/status')
   changeMemberStatus(
@@ -193,7 +213,9 @@ export class ShopsController {
   @ApiOkResponse({ type: ShopBranchResponse, isArray: true })
   @RequireShopPermissions('branches.view')
   @Get(':shopSlug/branches')
-  listBranches(@CurrentShop() access: ShopAccess): Promise<ShopBranchResponse[]> {
+  listBranches(
+    @CurrentShop() access: ShopAccess,
+  ): Promise<ShopBranchResponse[]> {
     return this.branches.list(access.shop.id);
   }
 

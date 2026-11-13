@@ -1,6 +1,15 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { USER_ROLES, type PublicUser, type UserRole } from '../user.entity.js';
-import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, MinLength, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  MinLength,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UserResponse implements PublicUser {
@@ -25,7 +34,7 @@ export class UserResponse implements PublicUser {
   role: UserRole;
 
   @ApiProperty({ description: 'สถานะ' })
-  status: string
+  status: string;
 
   @ApiProperty()
   createdAt: Date;
@@ -53,7 +62,8 @@ export class ProfileResponse extends UserResponse {
   @ApiProperty({
     type: ProfileShopSummary,
     nullable: true,
-    description: 'ร้านที่เป็นสมาชิก (ร้านแรก) — null สำหรับ platform admin ที่ไม่ได้เป็นสมาชิกร้าน',
+    description:
+      'ร้านที่เป็นสมาชิก (ร้านแรก) — null สำหรับ platform admin ที่ไม่ได้เป็นสมาชิกร้าน',
   })
   shop: ProfileShopSummary | null;
 
@@ -77,24 +87,26 @@ export class ProfileResponse extends UserResponse {
 export const USER_STATUSES = ['active', 'pending', 'suspended'] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
+// What an admin may set. `pending` is reached only through an invitation.
+export const ADMIN_SETTABLE_STATUSES = ['active', 'suspended'] as const;
+
 export class UpdateUserDto {
+  @ApiPropertyOptional({ example: 'อนันต์ ใจดี' })
   @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(80)
-  fullName: string
+  fullName?: string;
 
+  @ApiPropertyOptional({ enum: USER_ROLES })
   @IsOptional()
   @IsIn(USER_ROLES)
-  role: UserRole
+  role?: UserRole;
 
+  @ApiPropertyOptional({ enum: ADMIN_SETTABLE_STATUSES })
   @IsOptional()
-  @IsString()
-  branchId: string
-
-  @IsOptional()
-  @IsIn(USER_STATUSES)
-  status: string
+  @IsIn(ADMIN_SETTABLE_STATUSES)
+  status?: (typeof ADMIN_SETTABLE_STATUSES)[number];
 }
 
 export class PaginationDto {
@@ -103,32 +115,34 @@ export class PaginationDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  limit: number
+  limit: number;
 
   @ApiProperty({ example: '1' })
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  page: number
+  page: number;
 
   @ApiProperty({ example: '1' })
   @IsOptional()
   @IsString()
-  search: string
+  search: string;
 
   @ApiProperty({ example: '1' })
   @IsOptional()
-  shop: string
+  shop: string;
 
   @ApiProperty({ example: '1' })
   @IsOptional()
-  branch: string
+  branch: string;
 
-  @ApiProperty({ example: '1' })
+  @ApiPropertyOptional({ enum: USER_ROLES })
   @IsOptional()
-  role: string
+  @IsIn(USER_ROLES)
+  role: string;
 
-  @ApiProperty({ example: '1' })
+  @ApiPropertyOptional({ enum: USER_STATUSES })
   @IsOptional()
-  status: string
+  @IsIn(USER_STATUSES)
+  status: string;
 }

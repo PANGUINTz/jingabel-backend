@@ -55,7 +55,9 @@ export class Env {
   JWT_REFRESH_TTL: number = 60 * 60 * 24 * 7;
 
   // Frontend base URL, used for links in emails (e.g. the invitation link).
-  @Matches(/^https?:\/\/[^/]+.*[^/]$/, { message: 'APP_URL must be an http(s) URL without a trailing slash' })
+  @Matches(/^https?:\/\/[^/]+.*[^/]$/, {
+    message: 'APP_URL must be an http(s) URL without a trailing slash',
+  })
   APP_URL: string = 'http://localhost:3000';
 
   // How long an invitation link stays valid, in seconds.
@@ -80,7 +82,9 @@ export class Env {
   SMTP_PORT: number = 587;
 
   // true = TLS from the start (port 465); false = STARTTLS if offered (587).
-  @Transform(({ obj }: { obj: Record<string, unknown> }) => obj.SMTP_SECURE === 'true')
+  @Transform(
+    ({ obj }: { obj: Record<string, unknown> }) => obj.SMTP_SECURE === 'true',
+  )
   @IsBoolean()
   SMTP_SECURE: boolean = false;
 
@@ -100,7 +104,9 @@ export function validateEnv(config: Record<string, unknown>): Env {
   const env = plainToInstance(Env, config, { enableImplicitConversion: true });
   const errors = validateSync(env);
   if (env.NODE_ENV === 'production' && !env.SMTP_HOST) {
-    throw new Error('Invalid environment variables:\nSMTP_HOST is required in production');
+    throw new Error(
+      'Invalid environment variables:\nSMTP_HOST is required in production',
+    );
   }
   if (errors.length > 0) {
     throw new Error(

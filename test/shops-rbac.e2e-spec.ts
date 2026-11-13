@@ -48,7 +48,12 @@ describe('Shop RBAC (e2e)', () => {
   async function register(email: string): Promise<Account> {
     const res = await http()
       .post(`${API}/auth/register`)
-      .send({ email, password: PASSWORD, shopName: `ร้าน ${email}`, fullName: 'ทดสอบ ระบบ' })
+      .send({
+        email,
+        password: PASSWORD,
+        shopName: `ร้าน ${email}`,
+        fullName: 'ทดสอบ ระบบ',
+      })
       .expect(201);
     const cookies = res.headers['set-cookie'] as unknown as string[];
     const access = cookies.find((c) => c.startsWith('access_token='))!;
@@ -194,8 +199,9 @@ describe('Shop RBAC (e2e)', () => {
       .get(`${API}/shops/${shopSlug}/members?role=branch_manager`)
       .set('Cookie', owner.cookie)
       .expect(200);
-    expect(byRole.body.data.map((m: { user: { slug: string } }) => m.user.slug))
-      .toEqual([manager.slug]);
+    expect(
+      byRole.body.data.map((m: { user: { slug: string } }) => m.user.slug),
+    ).toEqual([manager.slug]);
 
     const bySearch = await http()
       .get(`${API}/shops/${shopSlug}/members?search=rbac-employee&limit=1`)
@@ -261,7 +267,10 @@ describe('Shop RBAC (e2e)', () => {
       .set('Cookie', owner.cookie)
       .send({ name: '  สาขาสุขุมวิท  ' })
       .expect(200);
-    expect(renamed.body).toMatchObject({ slug: branchSlug, name: 'สาขาสุขุมวิท' });
+    expect(renamed.body).toMatchObject({
+      slug: branchSlug,
+      name: 'สาขาสุขุมวิท',
+    });
 
     // Adding a branch: owner only, names unique within the shop.
     await http()
@@ -298,20 +307,32 @@ describe('Shop RBAC (e2e)', () => {
   });
 
   it('returns the shop and branches in /auth/me', async () => {
-    const me = await http().get(`${API}/auth/me`).set('Cookie', owner.cookie).expect(200);
-    expect(me.body.shop).toEqual({ slug: shopSlug, name: 'ร้าน rbac-owner@shop.com' });
+    const me = await http()
+      .get(`${API}/auth/me`)
+      .set('Cookie', owner.cookie)
+      .expect(200);
+    expect(me.body.shop).toEqual({
+      slug: shopSlug,
+      name: 'ร้าน rbac-owner@shop.com',
+    });
     // Owners get every branch of the shop, oldest (their own) first.
     const all = await http()
       .get(`${API}/shops/${shopSlug}/branches`)
       .set('Cookie', owner.cookie)
       .expect(200);
     expect(me.body.branches).toEqual(
-      all.body.map(({ slug, name }: { slug: string; name: string }) => ({ slug, name })),
+      all.body.map(({ slug, name }: { slug: string; name: string }) => ({
+        slug,
+        name,
+      })),
     );
     expect(me.body.branch.slug).toBe(me.body.branches[0].slug);
 
     // Non-owners only get their own branch.
-    const mgr = await http().get(`${API}/auth/me`).set('Cookie', manager.cookie).expect(200);
+    const mgr = await http()
+      .get(`${API}/auth/me`)
+      .set('Cookie', manager.cookie)
+      .expect(200);
     expect(mgr.body.shop.slug).toBe(shopSlug);
     expect(mgr.body.branches).toEqual([mgr.body.branch]);
   });
@@ -408,23 +429,43 @@ describe('Shop RBAC (e2e)', () => {
     await http()
       .post(`${API}/shops/${shopSlug}/members`)
       .set('Cookie', owner.cookie)
-      .send({ email: owner.email, fullName: 'ซ้ำ ซ้ำ', role: 'employee', branchSlug })
+      .send({
+        email: owner.email,
+        fullName: 'ซ้ำ ซ้ำ',
+        role: 'employee',
+        branchSlug,
+      })
       .expect(409);
     // Not to their own level.
     await http()
       .post(`${API}/shops/${shopSlug}/members`)
       .set('Cookie', manager.cookie)
-      .send({ email: 'x1@shop.com', fullName: 'เอ็กซ์ หนึ่ง', role: 'branch_manager', branchSlug })
+      .send({
+        email: 'x1@shop.com',
+        fullName: 'เอ็กซ์ หนึ่ง',
+        role: 'branch_manager',
+        branchSlug,
+      })
       .expect(403);
     await http()
       .post(`${API}/shops/${shopSlug}/members`)
       .set('Cookie', employee.cookie)
-      .send({ email: 'x2@shop.com', fullName: 'เอ็กซ์ สอง', role: 'employee', branchSlug })
+      .send({
+        email: 'x2@shop.com',
+        fullName: 'เอ็กซ์ สอง',
+        role: 'employee',
+        branchSlug,
+      })
       .expect(403);
     await http()
       .post(`${API}/shops/${shopSlug}/members`)
       .set('Cookie', owner.cookie)
-      .send({ email: 'x3@shop.com', fullName: 'เอ็กซ์ สาม', role: 'employee', branchSlug: 'AAAAAAAAAA' })
+      .send({
+        email: 'x3@shop.com',
+        fullName: 'เอ็กซ์ สาม',
+        role: 'employee',
+        branchSlug: 'AAAAAAAAAA',
+      })
       .expect(404);
   });
 
@@ -437,7 +478,9 @@ describe('Shop RBAC (e2e)', () => {
       .set('Cookie', owner.cookie)
       .send({ email, fullName: 'รอ ยืนยัน', role: 'employee', branchSlug })
       .expect(503);
-    expect(await db.query(`SELECT 1 FROM users WHERE email = $1`, [email])).toHaveLength(0);
+    expect(
+      await db.query(`SELECT 1 FROM users WHERE email = $1`, [email]),
+    ).toHaveLength(0);
 
     const created = await http()
       .post(`${API}/shops/${shopSlug}/members`)
@@ -468,7 +511,9 @@ describe('Shop RBAC (e2e)', () => {
       .delete(`${API}/shops/${shopSlug}/members/${slug}`)
       .set('Cookie', owner.cookie)
       .expect(204);
-    expect(await db.query(`SELECT 1 FROM users WHERE email = $1`, [email])).toHaveLength(0);
+    expect(
+      await db.query(`SELECT 1 FROM users WHERE email = $1`, [email]),
+    ).toHaveLength(0);
   });
 
   it('removes a member from the shop but keeps their account', async () => {

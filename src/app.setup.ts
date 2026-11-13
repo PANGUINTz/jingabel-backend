@@ -13,10 +13,12 @@ export function setupApp(app: INestApplication): void {
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({
-    origin: [
-      config.get('CORS_ORIGIN', { infer: true }),
-      'http://192.168.50.244:3000'
-    ],
+    // CORS_ORIGIN is a comma-separated list of frontend origins.
+    origin: config
+      .get('CORS_ORIGIN', { infer: true })
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
     credentials: true,
   });
 

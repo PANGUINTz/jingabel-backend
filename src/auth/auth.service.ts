@@ -186,7 +186,7 @@ export class AuthService {
     const payload = await this.verifyRefreshToken(refreshToken);
     const session = await this.sessions.get(payload.sid);
     if (!session || session.userId !== payload.sub) {
-      console.log("ไม่มีเซสซั่น");
+      console.log('ไม่มีเซสซั่น');
       throw new UnauthorizedException();
     }
 
@@ -194,7 +194,7 @@ export class AuthService {
     const userSession =
       await this.userSessionService.findActiveByToken(refreshToken);
     if (!userSession) {
-      console.log("ไม่มี refresh token");
+      console.log('ไม่มี refresh token');
       await this.sessions.delete(payload.sid);
       throw new UnauthorizedException();
     }
@@ -269,9 +269,7 @@ export class AuthService {
     );
     if (!session) throw new NotFoundException('ไม่พบอุปกรณ์นี้');
     if (this.userSessionService.isSessionOf(session, refreshToken)) {
-      throw new BadRequestException(
-        'ใช้ปุ่มออกจากระบบเพื่อออกจากอุปกรณ์นี้',
-      );
+      throw new BadRequestException('ใช้ปุ่มออกจากระบบเพื่อออกจากอุปกรณ์นี้');
     }
 
     await this.userSessionService.revokeById(session.id);
@@ -334,7 +332,7 @@ export class AuthService {
   }
 
   async updateProfile(userId: string, body: ProfileDto) {
-    return this.users.update(userId, body)
+    return this.users.update(userId, body);
   }
 
   async changePassword(userId: string, body: PasswordDto) {
@@ -345,24 +343,26 @@ export class AuthService {
       user?.passwordHash ?? (await this.dummyHash),
       body.currentPassword,
     );
-    if(!passwordValid) {
-      throw new BadRequestException('รหัสผ่านเดิมไม่ถูกต้อง')
+    if (!passwordValid) {
+      throw new BadRequestException('รหัสผ่านเดิมไม่ถูกต้อง');
     }
 
-    if(body.currentPassword === body.newPassword) {
-      throw new BadRequestException('รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม')
+    if (body.currentPassword === body.newPassword) {
+      throw new BadRequestException('รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม');
     }
 
-    if(body.newPassword !== body.confirmPassword) {
-      throw new BadRequestException('รหัสผ่านไม่ตรงกัน')
+    if (body.newPassword !== body.confirmPassword) {
+      throw new BadRequestException('รหัสผ่านไม่ตรงกัน');
     }
 
-    if(!this.isValidPassword(body.newPassword)) {
-      throw new BadRequestException('รหัสผ่านควรมีอย่างน้อย 8 ตัวอักษรและควรมีตัวอักษรภาษาอังกฤษและตัวเลข')
+    if (!this.isValidPassword(body.newPassword)) {
+      throw new BadRequestException(
+        'รหัสผ่านควรมีอย่างน้อย 8 ตัวอักษรและควรมีตัวอักษรภาษาอังกฤษและตัวเลข',
+      );
     }
 
-    const passwordHash = await argon2.hash(body.newPassword)
-    return this.users.changePassword(userId, { passwordHash })
+    const passwordHash = await argon2.hash(body.newPassword);
+    return this.users.changePassword(userId, { passwordHash });
   }
 
   private startSession(

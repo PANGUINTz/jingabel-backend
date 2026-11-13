@@ -41,7 +41,7 @@ docker compose up -d --build
 | --- | --- | --- |
 | `NODE_ENV` | `development` | `production` ทำให้ cookie เป็น `Secure` |
 | `PORT` | `4000` | |
-| `CORS_ORIGIN` | `http://localhost:3000` | origin ของ frontend ที่ส่ง cookie มาได้ |
+| `CORS_ORIGIN` | `http://localhost:3000` | origin ของ frontend ที่ส่ง cookie มาได้ — หลายค่าคั่นด้วย `,` |
 | `DATABASE_URL` | — | ต้องกำหนด เช่น `postgres://jingabel:jingabel@localhost:5433/jingabel` |
 | `JWT_ACCESS_SECRET` | — | ต้องกำหนด อย่างน้อย 32 ตัวอักษร |
 | `JWT_REFRESH_SECRET` | — | ต้องกำหนด อย่างน้อย 32 ตัวอักษร และไม่ซ้ำกับตัวบน |

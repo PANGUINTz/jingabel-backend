@@ -47,7 +47,8 @@ export class MyShopResponse {
   @ApiProperty({
     type: () => MemberBranchSummary,
     nullable: true,
-    description: 'สาขาที่ผู้ใช้สังกัดในร้านนี้ — null เมื่อเป็น platform admin ที่ไม่ได้เป็นสมาชิก',
+    description:
+      'สาขาที่ผู้ใช้สังกัดในร้านนี้ — null เมื่อเป็น platform admin ที่ไม่ได้เป็นสมาชิก',
   })
   branch: MemberBranchSummary | null;
 
@@ -233,7 +234,8 @@ export class InviteMemberDto {
 
   @ApiProperty({
     example: 'Bq7kP2qL0a',
-    description: 'slug จาก GET /shops/{shopSlug}/branches — Branch Manager เชิญได้เฉพาะสาขาของตัวเอง',
+    description:
+      'slug จาก GET /shops/{shopSlug}/branches — Branch Manager เชิญได้เฉพาะสาขาของตัวเอง',
   })
   @IsString()
   @MinLength(1)

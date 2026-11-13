@@ -1,10 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsString,
-  Matches,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { Match } from '../../common/validators/match.decorator.js';
 import { RoleSummary } from '../../shops/dto/shop.dto.js';
 

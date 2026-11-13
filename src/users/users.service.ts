@@ -1,9 +1,32 @@
-import { Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, type EntityManager, Repository } from 'typeorm';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import {
+  DataSource,
+  QueryFailedError,
+  type EntityManager,
+  Repository,
+} from 'typeorm';
+import { AuditService } from '../audit/audit.service.js';
+import { escapeLike } from '../common/utils/escape-like.js';
 import { generateString } from '../common/utils/generate-string.js';
-import { USER_SLUG_LENGTH, User } from './user.entity.js';
+import { ShopMember } from '../shops/entities/shop-member.entity.js';
+import { assertNotLastOwner, shopIdsOf } from '../shops/last-owner.js';
+import { UserSessionsService } from '../user_sessions/user_sessions.service.js';
+import {
+  USER_SLUG_LENGTH,
+  User,
+  toPublicUser,
+  type PublicUser,
+} from './user.entity.js';
 import { PaginationDto, UpdateUserDto } from './dto/user.response.js';
+
+const USER_NOT_FOUND = 'ไม่พบผู้ใช้นี้';
 
 // 62^10 possible slugs, so a collision is practically impossible — but the
 // unique constraint is the real guarantee, so retry a few times if it fires.
@@ -15,20 +38,17 @@ export type CreateUserInput = Pick<
   'email' | 'fullName' | 'passwordHash' | 'role'
 > &
   Partial<Pick<User, 'status'>>;
-export type UpdateUserInput = Pick<
-  User,
-  'email' | 'fullName'
->;
+export type UpdateUserInput = Pick<User, 'email' | 'fullName'>;
 
-export type ChangePasswordInput = Pick<
-  User,
-  'passwordHash'
->;
+export type ChangePasswordInput = Pick<User, 'passwordHash'>;
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly audit: AuditService,
+    private readonly sessions: UserSessionsService,
   ) {}
 
   findById(id: string): Promise<User | null> {
@@ -66,48 +86,125 @@ export class UsersService {
   async update(id: string, body: UpdateUserInput) {
     const user = await this.findById(id);
     if (!user) throw new UnauthorizedException();
-    try {
-      return this.users.update(id, body)
-    } catch (error) {
-      throw new InternalServerErrorException(error)
-    }
-  }
-
-  async deleteUser(slug: string) {
-    const user = await this.findBySlug(slug);
-    if (!user) throw new NotFoundException('user not found');
-    try {
-      return this.users.delete(user.id)
-    } catch (error) {
-      throw new InternalServerErrorException(error)
-    }
-  }
-
-  async updateUserBySlug(slug: string, body: UpdateUserDto) {
-    const user = await this.findBySlug(slug);
-    // Not 401: the frontend treats 401 as an expired session and logs the admin out.
-    if (!user) throw new NotFoundException('user not found');
-    try {
-      return this.users.update({ slug: slug }, body)
-    } catch (error) {
-      throw new InternalServerErrorException(error)
-    }
+    return this.users.update(id, body);
   }
 
   async changePassword(id: string, body: ChangePasswordInput) {
     const user = await this.findById(id);
     if (!user) throw new UnauthorizedException();
-    try {
-      return this.users.update(id, body)
-    } catch (error) {
-      throw new InternalServerErrorException(error)
-    }
+    return this.users.update(id, body);
+  }
+
+  // Platform admin edits a user (PATCH /users/:slug). users.role applies in
+  // every shop the user belongs to, so demoting a shop_owner must leave each
+  // of those shops another owner. Audited; suspending signs out every device.
+  async adminUpdate(
+    actorUserId: string,
+    slug: string,
+    dto: UpdateUserDto,
+  ): Promise<PublicUser> {
+    const updated = await this.dataSource.transaction(async (manager) => {
+      const users = manager.getRepository(User);
+      const user = await users.findOne({
+        where: { slug },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user) throw new NotFoundException(USER_NOT_FOUND);
+
+      const changes: Partial<Pick<User, 'fullName' | 'role' | 'status'>> = {};
+      if (dto.fullName !== undefined && dto.fullName !== user.fullName) {
+        changes.fullName = dto.fullName;
+      }
+      if (dto.role !== undefined && dto.role !== user.role) {
+        changes.role = dto.role;
+      }
+      if (dto.status !== undefined && dto.status !== user.status) {
+        changes.status = dto.status;
+      }
+      if (Object.keys(changes).length === 0) return user;
+
+      if ((changes.role || changes.status) && user.id === actorUserId) {
+        throw new ForbiddenException('เปลี่ยนบทบาทหรือสถานะของตัวเองไม่ได้');
+      }
+      if (changes.status && user.status === 'pending') {
+        throw new BadRequestException(
+          'บัญชียังไม่ได้ยืนยันคำเชิญ — ให้ร้านส่งคำเชิญใหม่หรือลบบัญชีแทน',
+        );
+      }
+      if (changes.role && user.role === 'shop_owner') {
+        const members = manager.getRepository(ShopMember);
+        await assertNotLastOwner(
+          members,
+          await shopIdsOf(members, user.id),
+          user.id,
+        );
+      }
+
+      await users.update(user.id, changes);
+      await this.audit.record(
+        {
+          actorUserId,
+          shopId: null,
+          action: 'user.update',
+          targetId: user.id,
+          details: Object.fromEntries(
+            Object.entries(changes).map(([key, to]) => [
+              key,
+              { from: user[key as keyof typeof changes], to },
+            ]),
+          ),
+        },
+        manager,
+      );
+      return { ...user, ...changes };
+    });
+    if (updated.status === 'suspended') await this.sessions.revokeAll(slug);
+    return toPublicUser(updated);
+  }
+
+  // Platform admin deletes an account (DELETE /users/:slug). Memberships,
+  // invitations and reset links go with it (CASCADE); a shop's last owner
+  // can't be deleted.
+  async adminDelete(actorUserId: string, slug: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const users = manager.getRepository(User);
+      const user = await users.findOne({
+        where: { slug },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user) throw new NotFoundException(USER_NOT_FOUND);
+      if (user.id === actorUserId) {
+        throw new ForbiddenException('ลบบัญชีของตัวเองไม่ได้');
+      }
+      if (user.role === 'shop_owner') {
+        const members = manager.getRepository(ShopMember);
+        await assertNotLastOwner(
+          members,
+          await shopIdsOf(members, user.id),
+          user.id,
+        );
+      }
+
+      await this.audit.record(
+        {
+          actorUserId,
+          shopId: null,
+          action: 'user.delete',
+          targetId: user.id,
+          details: { email: user.email, role: user.role },
+        },
+        manager,
+      );
+      await users.delete(user.id);
+    });
+    // user_sessions has no FK to users, so revoke explicitly.
+    await this.sessions.revokeAll(slug);
   }
 
   async usersList(opt: PaginationDto) {
     const { page, limit, search, status, role } = opt;
 
-    const qb = this.users.createQueryBuilder('user')
+    const qb = this.users.createQueryBuilder('user');
     qb.select([
       'user.email',
       'user.fullName',
@@ -115,20 +212,23 @@ export class UsersService {
       'user.slug',
       'user.status',
       'user.createdAt',
-    ])
-    if(search?.trim()) {
-      qb.andWhere('(user.full_name ILIKE :search OR user.email ILIKE :search)', { search: `%${search.trim()}%` })
+    ]);
+    if (search?.trim()) {
+      qb.andWhere(
+        '(user.full_name ILIKE :search OR user.email ILIKE :search)',
+        { search: `%${escapeLike(search.trim())}%` },
+      );
     }
-    if(status?.trim()) {
-      qb.andWhere('(user.status = :status)', { status: status })
+    if (status?.trim()) {
+      qb.andWhere('(user.status = :status)', { status: status });
     }
-    if(role?.trim()) {
-      qb.andWhere('(user.role = :role)', { role: role })
+    if (role?.trim()) {
+      qb.andWhere('(user.role = :role)', { role: role });
     }
 
     qb.orderBy('user.createdAt', 'DESC')
-    .skip((page - 1) * limit)
-    .take(limit)
+      .skip((page - 1) * limit)
+      .take(limit);
 
     const [data, total] = await qb.getManyAndCount();
     const totalPages = Math.ceil(total / limit);
@@ -144,7 +244,6 @@ export class UsersService {
     };
   }
 }
-
 
 function isSlugCollision(error: unknown): boolean {
   return (

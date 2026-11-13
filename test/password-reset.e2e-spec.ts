@@ -21,13 +21,20 @@ describe('Forgot password & suspended accounts (e2e)', () => {
   async function register(email: string): Promise<string[]> {
     const res = await http()
       .post(`${API}/auth/register`)
-      .send({ email, password: PASSWORD, shopName: `ร้าน ${email}`, fullName: 'ทดสอบ ระบบ' })
+      .send({
+        email,
+        password: PASSWORD,
+        shopName: `ร้าน ${email}`,
+        fullName: 'ทดสอบ ระบบ',
+      })
       .expect(201);
     return res.headers['set-cookie'] as unknown as string[];
   }
 
   function mailsTo(email: string) {
-    return mailSpy.mock.calls.filter(([to]) => to === email).map(([, mail]) => mail);
+    return mailSpy.mock.calls
+      .filter(([to]) => to === email)
+      .map(([, mail]) => mail);
   }
 
   function lastResetToken(email: string): string {
@@ -59,9 +66,14 @@ describe('Forgot password & suspended accounts (e2e)', () => {
   it('resets the password with the emailed link and signs out every device', async () => {
     const email = 'reset-active@shop.com';
     const cookies = await register(email);
-    const refresh = cookies.find((c) => c.startsWith('refresh_token='))!.split(';')[0];
+    const refresh = cookies
+      .find((c) => c.startsWith('refresh_token='))!
+      .split(';')[0];
 
-    await http().post(`${API}/auth/password/forgot`).send({ email }).expect(204);
+    await http()
+      .post(`${API}/auth/password/forgot`)
+      .send({ email })
+      .expect(204);
     const [mail] = mailsTo(email);
     expect(mail.subject).toContain('ตั้งรหัสผ่านใหม่');
     const token = lastResetToken(email);
@@ -86,18 +98,33 @@ describe('Forgot password & suspended accounts (e2e)', () => {
       .post(`${API}/auth/password/reset`)
       .send({ token, password: NEW_PASSWORD, confirmPassword: NEW_PASSWORD })
       .expect(410);
-    await http().post(`${API}/auth/login`).send({ email, password: PASSWORD }).expect(401);
-    await http().post(`${API}/auth/login`).send({ email, password: NEW_PASSWORD }).expect(200);
+    await http()
+      .post(`${API}/auth/login`)
+      .send({ email, password: PASSWORD })
+      .expect(401);
+    await http()
+      .post(`${API}/auth/login`)
+      .send({ email, password: NEW_PASSWORD })
+      .expect(200);
     await http().post(`${API}/auth/refresh`).set('Cookie', refresh).expect(401);
   });
 
   it('only lets the newest link work', async () => {
     const email = 'reset-twice@shop.com';
     await register(email);
-    await http().post(`${API}/auth/password/forgot`).send({ email }).expect(204);
+    await http()
+      .post(`${API}/auth/password/forgot`)
+      .send({ email })
+      .expect(204);
     const first = lastResetToken(email);
-    await http().post(`${API}/auth/password/forgot`).send({ email }).expect(204);
-    await http().post(`${API}/auth/password/reset/preview`).send({ token: first }).expect(404);
+    await http()
+      .post(`${API}/auth/password/forgot`)
+      .send({ email })
+      .expect(204);
+    await http()
+      .post(`${API}/auth/password/reset/preview`)
+      .send({ token: first })
+      .expect(404);
   });
 
   it('answers the same for unknown emails and sends nothing', async () => {
@@ -107,35 +134,55 @@ describe('Forgot password & suspended accounts (e2e)', () => {
       .send({ email: 'nobody@shop.com' })
       .expect(204);
     expect(mailSpy.mock.calls.length).toBe(before);
-    await http().post(`${API}/auth/password/forgot`).send({ email: 'not-an-email' }).expect(400);
+    await http()
+      .post(`${API}/auth/password/forgot`)
+      .send({ email: 'not-an-email' })
+      .expect(400);
   });
 
   it('blocks suspended accounts from signing in, refreshing and resetting', async () => {
     const email = 'reset-suspended@shop.com';
     const cookies = await register(email);
-    const refresh = cookies.find((c) => c.startsWith('refresh_token='))!.split(';')[0];
+    const refresh = cookies
+      .find((c) => c.startsWith('refresh_token='))!
+      .split(';')[0];
 
     // A link requested while still active…
-    await http().post(`${API}/auth/password/forgot`).send({ email }).expect(204);
+    await http()
+      .post(`${API}/auth/password/forgot`)
+      .send({ email })
+      .expect(204);
     const token = lastResetToken(email);
     await setStatus(email, 'suspended');
 
     // …can't be used once suspended.
-    await http().post(`${API}/auth/password/reset/preview`).send({ token }).expect(403);
+    await http()
+      .post(`${API}/auth/password/reset/preview`)
+      .send({ token })
+      .expect(403);
     await http()
       .post(`${API}/auth/password/reset`)
       .send({ token, password: NEW_PASSWORD, confirmPassword: NEW_PASSWORD })
       .expect(403);
 
     // Forgot password: same answer, but the email says "suspended", no link.
-    await http().post(`${API}/auth/password/forgot`).send({ email }).expect(204);
+    await http()
+      .post(`${API}/auth/password/forgot`)
+      .send({ email })
+      .expect(204);
     const notice = mailsTo(email).at(-1)!;
     expect(notice.subject).toContain('ถูกระงับ');
     expect(notice.text).not.toMatch(/https?:\/\//);
 
     // Wrong password: the usual answer. Right password: told it's suspended.
-    await http().post(`${API}/auth/login`).send({ email, password: 'wrongpass1' }).expect(401);
-    const login = await http().post(`${API}/auth/login`).send({ email, password: PASSWORD }).expect(403);
+    await http()
+      .post(`${API}/auth/login`)
+      .send({ email, password: 'wrongpass1' })
+      .expect(401);
+    const login = await http()
+      .post(`${API}/auth/login`)
+      .send({ email, password: PASSWORD })
+      .expect(403);
     expect(login.body.message).toContain('ถูกระงับ');
 
     // An existing session can't be extended.
@@ -143,7 +190,10 @@ describe('Forgot password & suspended accounts (e2e)', () => {
 
     // Reactivated: signing in works again.
     await setStatus(email, 'active');
-    await http().post(`${API}/auth/login`).send({ email, password: PASSWORD }).expect(200);
+    await http()
+      .post(`${API}/auth/login`)
+      .send({ email, password: PASSWORD })
+      .expect(200);
   });
 
   it('sends pending (invited) accounts nothing', async () => {
@@ -151,7 +201,10 @@ describe('Forgot password & suspended accounts (e2e)', () => {
     await register(email);
     await setStatus(email, 'pending');
     const before = mailsTo(email).length;
-    await http().post(`${API}/auth/password/forgot`).send({ email }).expect(204);
+    await http()
+      .post(`${API}/auth/password/forgot`)
+      .send({ email })
+      .expect(204);
     expect(mailsTo(email).length).toBe(before);
   });
 });

@@ -23,7 +23,8 @@ export interface InvitationDetails {
 
 const INVALID_LINK = 'ลิงก์คำเชิญไม่ถูกต้อง';
 const EXPIRED_LINK = 'ลิงก์คำเชิญหมดอายุแล้ว กรุณาขอให้ร้านส่งคำเชิญใหม่';
-const USED_LINK = 'ลิงก์คำเชิญนี้ถูกใช้ไปแล้ว เข้าสู่ระบบด้วยอีเมลและรหัสผ่านได้เลย';
+const USED_LINK =
+  'ลิงก์คำเชิญนี้ถูกใช้ไปแล้ว เข้าสู่ระบบด้วยอีเมลและรหัสผ่านได้เลย';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -51,7 +52,10 @@ export class InvitationsService {
     );
     await repo.insert({ ...input, tokenHash: hashToken(token), expiresAt });
 
-    const acceptUrl = new URL('/invite', this.config.get('APP_URL', { infer: true }));
+    const acceptUrl = new URL(
+      '/invite',
+      this.config.get('APP_URL', { infer: true }),
+    );
     acceptUrl.searchParams.set('token', token);
     return { token, acceptUrl: acceptUrl.toString(), expiresAt };
   }

@@ -1,5 +1,10 @@
 import type { MailContent } from '../mail.types.js';
-import { MAIL_COLORS, mailDateFormat, renderMailLayout, strong } from './layout.js';
+import {
+  MAIL_COLORS,
+  mailDateFormat,
+  renderMailLayout,
+  strong,
+} from './layout.js';
 
 export interface PasswordResetMailData {
   fullName: string;
@@ -14,7 +19,8 @@ export function passwordResetMail(data: PasswordResetMailData): MailContent {
 
   const html = renderMailLayout({
     subject,
-    preheader: 'มีคำขอตั้งรหัสผ่านใหม่สำหรับบัญชีของคุณ — ลิงก์ใช้ได้ครั้งเดียว',
+    preheader:
+      'มีคำขอตั้งรหัสผ่านใหม่สำหรับบัญชีของคุณ — ลิงก์ใช้ได้ครั้งเดียว',
     eyebrow: 'ตั้งรหัสผ่านใหม่',
     title: `สวัสดีคุณ ${data.fullName}`,
     bodyHtml: `เราได้รับคำขอตั้งรหัสผ่านใหม่สำหรับบัญชี ${strong(data.email)} กดปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ เมื่อเปลี่ยนแล้ว ทุกอุปกรณ์ที่เข้าสู่ระบบอยู่จะถูกออกจากระบบ`,
@@ -43,7 +49,9 @@ export function passwordResetMail(data: PasswordResetMailData): MailContent {
 
 // Sent instead of a reset link when the account is suspended: the owner of the
 // mailbox learns why, while the forgot-password page itself reveals nothing.
-export function accountSuspendedMail(data: Pick<PasswordResetMailData, 'fullName' | 'email'>): MailContent {
+export function accountSuspendedMail(
+  data: Pick<PasswordResetMailData, 'fullName' | 'email'>,
+): MailContent {
   const subject = 'บัญชี Jingabel ของคุณถูกระงับการใช้งาน';
 
   const html = renderMailLayout({

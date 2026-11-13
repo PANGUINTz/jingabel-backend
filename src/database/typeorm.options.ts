@@ -27,7 +27,16 @@ export function buildTypeOrmOptions(env: DatabaseEnv): DataSourceOptions {
   return {
     type: 'postgres',
     url: env.DATABASE_URL,
-    entities: [User, UserSession, Shop, ShopBranch, ShopMember, AuditLog, UserInvitation, PasswordReset],
+    entities: [
+      User,
+      UserSession,
+      Shop,
+      ShopBranch,
+      ShopMember,
+      AuditLog,
+      UserInvitation,
+      PasswordReset,
+    ],
     // Creates/alters tables to match the entities on startup. It can drop
     // columns (and their data) that an entity no longer has — check entity
     // changes against real data before deploying.

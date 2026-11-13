@@ -25,7 +25,8 @@ export const ACCOUNT_SUSPENDED_MESSAGE =
   'บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อเจ้าของร้านหรือผู้จัดการสาขา';
 const INVALID_LINK = 'ลิงก์ตั้งรหัสผ่านใหม่ไม่ถูกต้อง';
 const EXPIRED_LINK = 'ลิงก์ตั้งรหัสผ่านใหม่หมดอายุแล้ว กรุณาขอลิงก์ใหม่';
-const USED_LINK = 'ลิงก์นี้ถูกใช้ไปแล้ว กรุณาขอลิงก์ใหม่หากต้องการเปลี่ยนรหัสผ่านอีกครั้ง';
+const USED_LINK =
+  'ลิงก์นี้ถูกใช้ไปแล้ว กรุณาขอลิงก์ใหม่หากต้องการเปลี่ยนรหัสผ่านอีกครั้ง';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -55,7 +56,10 @@ export class PasswordResetService {
 
     let content: MailContent;
     if (user.status === 'suspended') {
-      content = accountSuspendedMail({ fullName: user.fullName, email: user.email });
+      content = accountSuspendedMail({
+        fullName: user.fullName,
+        email: user.email,
+      });
     } else if (user.status === 'active') {
       const { resetUrl, expiresAt } = await this.issue(user.id);
       content = passwordResetMail({
@@ -98,7 +102,8 @@ export class PasswordResetService {
   ): Promise<{ resetUrl: string; expiresAt: Date }> {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(
-      Date.now() + this.config.get('PASSWORD_RESET_TTL', { infer: true }) * 1000,
+      Date.now() +
+        this.config.get('PASSWORD_RESET_TTL', { infer: true }) * 1000,
     );
     await this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(PasswordReset);
@@ -106,7 +111,10 @@ export class PasswordResetService {
       await repo.insert({ userId, tokenHash: hashToken(token), expiresAt });
     });
 
-    const resetUrl = new URL('/reset-password', this.config.get('APP_URL', { infer: true }));
+    const resetUrl = new URL(
+      '/reset-password',
+      this.config.get('APP_URL', { infer: true }),
+    );
     resetUrl.searchParams.set('token', token);
     return { resetUrl: resetUrl.toString(), expiresAt };
   }

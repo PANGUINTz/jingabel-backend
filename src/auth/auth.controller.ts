@@ -34,6 +34,7 @@ import type { CookieOptions, Request, Response } from 'express';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { ApiErrorResponse } from '../common/swagger/api-error.response.js';
+import { API_PREFIX } from '../config/api.js';
 import { Env } from '../config/env.js';
 import { ProfileResponse, UserResponse } from '../users/dto/user.response.js';
 import { AuthService, type AuthResult } from './auth.service.js';
@@ -59,6 +60,11 @@ import {
 import { PasswordDto, ProfileDto } from './dto/profile.dto.js';
 import { SessionResponse } from '../user_sessions/dto/session.response.js';
 import type { SessionClient } from '../user_sessions/user_sessions.service.js';
+
+// The refresh token is only ever needed by /auth/* routes, so the browser
+// doesn't send it anywhere else (cookies ignore ports, so '/' would also send
+// it to the Next server on localhost).
+const REFRESH_COOKIE_PATH = `/${API_PREFIX}/auth`;
 
 const CREDENTIALS_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
 // Each request can send an email.
@@ -112,7 +118,10 @@ export class AuthController {
       'ใช้ token จากลิงก์ในอีเมล (ส่งใน body ไม่ใช่ URL เพื่อไม่ให้ไปอยู่ใน log). จำกัด 10 ครั้งต่อนาที',
   })
   @ApiOkResponse({ type: InvitationPreviewResponse })
-  @ApiNotFoundResponse({ description: 'ลิงก์ไม่ถูกต้อง', type: ApiErrorResponse })
+  @ApiNotFoundResponse({
+    description: 'ลิงก์ไม่ถูกต้อง',
+    type: ApiErrorResponse,
+  })
   @ApiGoneResponse({
     description: 'ลิงก์หมดอายุ ถูกใช้แล้ว หรือบัญชีไม่อยู่ในสถานะ pending',
     type: ApiErrorResponse,
@@ -136,8 +145,14 @@ export class AuthController {
     description: 'ข้อมูลไม่ผ่าน validation',
     type: ApiErrorResponse,
   })
-  @ApiNotFoundResponse({ description: 'ลิงก์ไม่ถูกต้อง', type: ApiErrorResponse })
-  @ApiGoneResponse({ description: 'ลิงก์หมดอายุหรือถูกใช้แล้ว', type: ApiErrorResponse })
+  @ApiNotFoundResponse({
+    description: 'ลิงก์ไม่ถูกต้อง',
+    type: ApiErrorResponse,
+  })
+  @ApiGoneResponse({
+    description: 'ลิงก์หมดอายุหรือถูกใช้แล้ว',
+    type: ApiErrorResponse,
+  })
   @Public()
   @Throttle(CREDENTIALS_THROTTLE)
   @HttpCode(HttpStatus.OK)
@@ -160,7 +175,10 @@ export class AuthController {
       'บัญชีที่ถูกระงับได้อีเมลแจ้งว่าถูกระงับ (ไม่มีลิงก์), บัญชี pending ไม่ได้อะไร. จำกัด 5 ครั้งต่อนาที',
   })
   @ApiNoContentResponse({ description: 'รับคำขอแล้ว' })
-  @ApiBadRequestResponse({ description: 'อีเมลไม่ถูกรูปแบบ', type: ApiErrorResponse })
+  @ApiBadRequestResponse({
+    description: 'อีเมลไม่ถูกรูปแบบ',
+    type: ApiErrorResponse,
+  })
   @Public()
   @Throttle(FORGOT_PASSWORD_THROTTLE)
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -171,12 +189,22 @@ export class AuthController {
 
   @ApiOperation({
     summary: 'ตรวจลิงก์ตั้งรหัสผ่านใหม่',
-    description: 'ใช้ token จากลิงก์ในอีเมล (ส่งใน body ไม่ใช่ URL). จำกัด 10 ครั้งต่อนาที',
+    description:
+      'ใช้ token จากลิงก์ในอีเมล (ส่งใน body ไม่ใช่ URL). จำกัด 10 ครั้งต่อนาที',
   })
   @ApiOkResponse({ type: PasswordResetPreviewResponse })
-  @ApiNotFoundResponse({ description: 'ลิงก์ไม่ถูกต้อง', type: ApiErrorResponse })
-  @ApiForbiddenResponse({ description: 'บัญชีถูกระงับ', type: ApiErrorResponse })
-  @ApiGoneResponse({ description: 'ลิงก์หมดอายุหรือถูกใช้แล้ว', type: ApiErrorResponse })
+  @ApiNotFoundResponse({
+    description: 'ลิงก์ไม่ถูกต้อง',
+    type: ApiErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'บัญชีถูกระงับ',
+    type: ApiErrorResponse,
+  })
+  @ApiGoneResponse({
+    description: 'ลิงก์หมดอายุหรือถูกใช้แล้ว',
+    type: ApiErrorResponse,
+  })
   @Public()
   @Throttle(CREDENTIALS_THROTTLE)
   @HttpCode(HttpStatus.OK)
@@ -193,10 +221,22 @@ export class AuthController {
       'ลิงก์ใช้ได้ครั้งเดียว และทุกอุปกรณ์ที่เข้าสู่ระบบอยู่จะถูกออกจากระบบ — เข้าสู่ระบบใหม่ด้วยรหัสผ่านใหม่. จำกัด 10 ครั้งต่อนาที',
   })
   @ApiNoContentResponse({ description: 'เปลี่ยนรหัสผ่านแล้ว' })
-  @ApiBadRequestResponse({ description: 'ข้อมูลไม่ผ่าน validation', type: ApiErrorResponse })
-  @ApiNotFoundResponse({ description: 'ลิงก์ไม่ถูกต้อง', type: ApiErrorResponse })
-  @ApiForbiddenResponse({ description: 'บัญชีถูกระงับ', type: ApiErrorResponse })
-  @ApiGoneResponse({ description: 'ลิงก์หมดอายุหรือถูกใช้แล้ว', type: ApiErrorResponse })
+  @ApiBadRequestResponse({
+    description: 'ข้อมูลไม่ผ่าน validation',
+    type: ApiErrorResponse,
+  })
+  @ApiNotFoundResponse({
+    description: 'ลิงก์ไม่ถูกต้อง',
+    type: ApiErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'บัญชีถูกระงับ',
+    type: ApiErrorResponse,
+  })
+  @ApiGoneResponse({
+    description: 'ลิงก์หมดอายุหรือถูกใช้แล้ว',
+    type: ApiErrorResponse,
+  })
   @Public()
   @Throttle(CREDENTIALS_THROTTLE)
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -280,6 +320,7 @@ export class AuthController {
   @ApiNoContentResponse({ description: 'ออกจากระบบแล้ว' })
   // Identified by the refresh cookie, so it must work after the access token
   // has expired — the frontend calls it without the refresh-and-retry.
+  @Public()
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('logout')
   async logout(
@@ -315,7 +356,7 @@ export class AuthController {
   @Post('logout-all')
   async logoutAll(
     @Req() req: Request,
-    @CurrentUser() user: AuthUser
+    @CurrentUser() user: AuthUser,
   ): Promise<void> {
     await this.auth.logoutAll(user.id, readRefreshToken(req));
   }
@@ -420,7 +461,7 @@ export class AuthController {
     type: ApiErrorResponse,
   })
   @Patch('revoke/:refreshToken')
-  Revoke(@Param('refreshToken') refreshToken: string ) {
+  Revoke(@Param('refreshToken') refreshToken: string) {
     return this.auth.logout(refreshToken);
   }
 
@@ -432,7 +473,7 @@ export class AuthController {
     this.setAccessCookie(res, accessToken, maxAge);
     res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
       ...this.baseCookieOptions(),
-      path: '/',
+      path: REFRESH_COOKIE_PATH,
       ...(maxAge !== undefined && { maxAge }),
     });
     return { user: result.user };
@@ -460,6 +501,11 @@ export class AuthController {
       ...this.baseCookieOptions(),
       path: '/',
     });
+    res.clearCookie(REFRESH_TOKEN_COOKIE, {
+      ...this.baseCookieOptions(),
+      path: REFRESH_COOKIE_PATH,
+    });
+    // Older builds set the refresh cookie on '/'; clear that copy too.
     res.clearCookie(REFRESH_TOKEN_COOKIE, {
       ...this.baseCookieOptions(),
       path: '/',

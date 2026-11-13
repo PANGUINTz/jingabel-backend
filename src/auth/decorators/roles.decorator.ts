@@ -12,5 +12,4 @@ export const Role = {
   EMPLOYEE: 'employee',
 } as const satisfies Record<string, UserRole>;
 
-export const Roles = (...roles: UserRole[]) =>
-  SetMetadata(ROLES_KEY, roles);
+export const Roles = (...roles: UserRole[]) => SetMetadata(ROLES_KEY, roles);

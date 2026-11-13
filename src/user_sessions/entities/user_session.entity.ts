@@ -12,13 +12,13 @@ export class UserSession {
   @PrimaryGeneratedColumn('increment')
   id: number;
 
-  @Column({ name: "user_slug", type: 'varchar'})
+  @Column({ name: 'user_slug', type: 'varchar' })
   userSlug: string;
 
-  @Column({ name: "refresh_token", type: 'varchar', unique: true })
+  @Column({ name: 'refresh_token', type: 'varchar', unique: true })
   refreshToken: string;
 
-  @Column({ name: "device_name", type: 'varchar', length: 255, nullable: true })
+  @Column({ name: 'device_name', type: 'varchar', length: 255, nullable: true })
   deviceName: string;
 
   @Column({ name: 'device_type', type: 'varchar', length: 255, nullable: true })
@@ -29,9 +29,9 @@ export class UserSession {
 
   @Column({ name: 'ip_address', type: 'varchar', length: 255, nullable: true })
   ipAddress: string;
-  
+
   @Column({ name: 'location', type: 'varchar', length: 255, nullable: true })
-  location: string; 
+  location: string;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

@@ -10,13 +10,9 @@ import {
 } from '@nestjs/common';
 import argon2 from 'argon2';
 import { InjectDataSource } from '@nestjs/typeorm';
-import {
-  DataSource,
-  In,
-  QueryFailedError,
-  type EntityManager,
-  type Repository,
-} from 'typeorm';
+import { DataSource, QueryFailedError, type EntityManager } from 'typeorm';
+import { escapeLike } from '../common/utils/escape-like.js';
+import { assertNotLastOwner, shopIdsOf } from './last-owner.js';
 import { AuditService } from '../audit/audit.service.js';
 import { InvitationsService } from '../invitations/invitations.service.js';
 import { MailService } from '../mail/mail.service.js';
@@ -225,7 +221,7 @@ export class ShopMembersService {
       .createQueryBuilder('m')
       .innerJoinAndSelect('m.user', 'u')
       .innerJoinAndSelect('m.branch', 'b')
-      .where('m.shopId = :shopId', { shopId })
+      .where('m.shopId = :shopId', { shopId });
     if (search) {
       qb.andWhere('(u.fullName ILIKE :search OR u.email ILIKE :search)', {
         search: `%${escapeLike(search)}%`,
@@ -233,7 +229,7 @@ export class ShopMembersService {
     }
     if (role) qb.andWhere('u.role = :role', { role });
     if (status) qb.andWhere('u.status = :status', { status });
-    if(branch) qb.andWhere('b.slug = :branch', { branch })
+    if (branch) qb.andWhere('b.slug = :branch', { branch });
 
     const [members, total] = await qb
       .orderBy('m.createdAt', 'ASC')
@@ -271,13 +267,11 @@ export class ShopMembersService {
       }
       if (oldRole === 'shop_owner') {
         // The role is per user, so every shop they are in must keep an owner.
-        const shopIds = (
-          await repo.find({
-            where: { userId: member.userId },
-            select: { shopId: true },
-          })
-        ).map((m) => m.shopId);
-        await assertNotLastOwner(repo, shopIds, member.userId);
+        await assertNotLastOwner(
+          repo,
+          await shopIdsOf(repo, member.userId),
+          member.userId,
+        );
       }
 
       await manager
@@ -409,37 +403,4 @@ function assertCanManage(
     );
   }
   return role;
-}
-
-// Each of `shopIds` must keep an owner other than `userId`.
-async function assertNotLastOwner(
-  repo: Repository<ShopMember>,
-  shopIds: string[],
-  userId: string,
-): Promise<void> {
-  if (shopIds.length === 0) return;
-  // Row locks (FOR UPDATE can't be combined with COUNT) so two concurrent
-  // demotions/removals can't both see the other as the remaining owner.
-  const members = await repo
-    .createQueryBuilder('m')
-    .innerJoinAndSelect('m.user', 'u')
-    .where({ shopId: In(shopIds) })
-    .setLock('pessimistic_write', undefined, ['m'])
-    .getMany();
-  const ownerless = shopIds.some(
-    (shopId) =>
-      !members.some(
-        (m) =>
-          m.shopId === shopId &&
-          m.userId !== userId &&
-          m.user!.role === 'shop_owner',
-      ),
-  );
-  if (ownerless) {
-    throw new ConflictException('ร้านต้องมี Shop Owner อย่างน้อย 1 คน');
-  }
-}
-
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
 }

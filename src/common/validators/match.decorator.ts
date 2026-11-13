@@ -4,7 +4,10 @@ import {
   ValidationOptions,
 } from 'class-validator';
 
-export function Match<T>(property: keyof T & string, validationOptions?: ValidationOptions) {
+export function Match<T>(
+  property: keyof T & string,
+  validationOptions?: ValidationOptions,
+) {
   return (object: object, propertyName: string) => {
     registerDecorator({
       name: 'match',
@@ -15,7 +18,9 @@ export function Match<T>(property: keyof T & string, validationOptions?: Validat
       validator: {
         validate(value: unknown, args: ValidationArguments) {
           const [relatedProperty] = args.constraints;
-          const relatedValue = (args.object as Record<string, unknown>)[relatedProperty];
+          const relatedValue = (args.object as Record<string, unknown>)[
+            relatedProperty
+          ];
           return value === relatedValue;
         },
         defaultMessage(args: ValidationArguments) {

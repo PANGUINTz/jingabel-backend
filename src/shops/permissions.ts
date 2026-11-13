@@ -30,7 +30,7 @@ export function isShopPermission(value: string): value is ShopPermission {
 // The fixed roles a user can hold in a shop. A user's role lives in
 // users.role (one role for every shop they belong to) and shops can't define
 // their own; permissions come from SHOP_ROLE_PERMISSIONS below, so adding a
-// permission here takes effect without a data migration.
+// permission here takes effect without changing any data.
 export const SHOP_ROLES = ['shop_owner', 'branch_manager', 'employee'] as const;
 
 export type ShopRole = (typeof SHOP_ROLES)[number];
@@ -39,10 +39,11 @@ export function isShopRole(value: string): value is ShopRole {
   return (SHOP_ROLES as readonly string[]).includes(value);
 }
 
-export const SHOP_ROLE_NAMES: Record<ShopRole, string> = {
-  shop_owner: 'Shop Owner',
-  branch_manager: 'Branch Manager',
-  employee: 'Employee',
+// Thai labels for user-facing text such as emails (match the frontend's).
+export const SHOP_ROLE_LABELS_TH: Record<ShopRole, string> = {
+  shop_owner: 'เจ้าของร้าน',
+  branch_manager: 'ผู้จัดการสาขา',
+  employee: 'พนักงานทั่วไป',
 };
 
 // Higher outranks lower. Nobody can change the role of, or hand out, a role at

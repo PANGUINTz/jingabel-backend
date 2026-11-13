@@ -18,6 +18,10 @@ export default defineConfig({
         'postgres://jingabel:jingabel@localhost:5433/jingabel_test',
       JWT_ACCESS_SECRET: 'test-access-secret-test-access-secret',
       JWT_REFRESH_SECRET: 'test-refresh-secret-test-refresh-secret',
+      // Never send real mail from tests, whatever .env says: MailService
+      // falls back to logging, and the suites spy on MailService.send.
+      SMTP_HOST: '',
+      APP_URL: 'http://localhost:3000',
     },
   },
 });

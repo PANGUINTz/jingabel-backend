@@ -12,7 +12,15 @@ import { JwtService } from '@nestjs/jwt';
 import argon2 from 'argon2';
 import { DataSource, QueryFailedError } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { ShopsService } from '../shops/shops.service.js';
+import { ShopsService, toRoleSummary } from '../shops/shops.service.js';
+import { ShopBranch } from '../shops/entities/shop-branch.entity.js';
+import { ShopMember } from '../shops/entities/shop-member.entity.js';
+import type { ProfileResponse } from '../users/dto/user.response.js';
+import { InvitationsService } from '../invitations/invitations.service.js';
+import type {
+  AcceptInvitationDto,
+  InvitationPreviewResponse,
+} from './dto/invitation.dto.js';
 import { Env } from '../config/env.js';
 import {
   toPublicUser,
@@ -28,6 +36,10 @@ import type {
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { RefreshSessionStore } from './refresh-session.store.js';
+import {
+  ACCOUNT_SUSPENDED_MESSAGE,
+  PasswordResetService,
+} from './password-reset/password-reset.service.js';
 import { PasswordDto, ProfileDto } from './dto/profile.dto.js';
 import {
   UserSessionsService,
@@ -73,8 +85,48 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService<Env, true>,
     private readonly shops: ShopsService,
+    private readonly invitations: InvitationsService,
+    private readonly passwordResets: PasswordResetService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
+
+  requestPasswordReset(email: string): Promise<void> {
+    return this.passwordResets.request(email);
+  }
+
+  previewPasswordReset(token: string) {
+    return this.passwordResets.preview(token);
+  }
+
+  async resetPassword(token: string, password: string): Promise<void> {
+    await this.passwordResets.reset(token, await argon2.hash(password));
+  }
+
+  // What the invitation page shows before the invitee sets a password.
+  async previewInvitation(token: string): Promise<InvitationPreviewResponse> {
+    const { invitation, user, member } =
+      await this.invitations.findUsable(token);
+    return {
+      email: user.email,
+      fullName: user.fullName,
+      shopName: invitation.shop!.name,
+      branchName: member?.branch?.name ?? null,
+      role: toRoleSummary(user.role),
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
+  // Sets the password, activates the account and signs the user in.
+  async acceptInvitation(
+    dto: AcceptInvitationDto,
+    client: SessionClient,
+  ): Promise<AuthResult> {
+    const user = await this.invitations.accept(
+      dto.token,
+      await argon2.hash(dto.password),
+    );
+    return this.startSession(user, false, client);
+  }
 
   async register(dto: RegisterDto, client: SessionClient): Promise<AuthResult> {
     if (await this.users.findByEmail(dto.email)) {
@@ -92,7 +144,6 @@ export class AuthService {
             passwordHash,
             // Fixed role; createWithOwner below adds the shop membership.
             role: 'shop_owner',
-            isEmployee: false,
           },
           manager,
         );
@@ -118,6 +169,11 @@ export class AuthService {
     );
     if (!user || !passwordMatches) {
       throw new UnauthorizedException('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    }
+    // Only after the password matched, so the status isn't revealed to
+    // someone guessing.
+    if (user.status === 'suspended') {
+      throw new ForbiddenException(ACCOUNT_SUSPENDED_MESSAGE);
     }
 
     return this.startSession(user, dto.remember ?? false, client);
@@ -145,9 +201,14 @@ export class AuthService {
     await this.userSessionService.touch(userSession.id);
 
     const user = await this.users.findById(session.userId);
-    if (!user) {
+    // Suspended since signing in: end the session here, so access lasts at
+    // most until the current access token expires.
+    if (!user || user.status === 'suspended') {
       await this.sessions.delete(payload.sid);
-      throw new UnauthorizedException();
+      await this.userSessionService.revoke(refreshToken);
+      throw new UnauthorizedException(
+        user ? ACCOUNT_SUSPENDED_MESSAGE : undefined,
+      );
     }
 
     return {
@@ -236,10 +297,40 @@ export class AuthService {
     }));
   }
 
-  async getProfile(userId: string): Promise<PublicUser> {
+  async getProfile(userId: string): Promise<ProfileResponse> {
     const user = await this.users.findById(userId);
     if (!user) throw new UnauthorizedException();
-    return toPublicUser(user);
+
+    // shop_members → shops / shop_branches. The UI is single-shop for now, so
+    // the oldest membership is the one shown.
+    const member = await this.dataSource.getRepository(ShopMember).findOne({
+      where: { userId },
+      relations: { shop: true, branch: true },
+      order: { createdAt: 'ASC' },
+    });
+    const summary = ({ slug, name }: { slug: string; name: string }) => ({
+      slug,
+      name,
+    });
+
+    let branches: ShopBranch[] = [];
+    if (member) {
+      // Only a Shop Owner works across branches; everyone else sees their own.
+      branches =
+        user.role === 'shop_owner'
+          ? await this.dataSource.getRepository(ShopBranch).find({
+              where: { shopId: member.shopId },
+              order: { createdAt: 'ASC' },
+            })
+          : [member.branch!];
+    }
+
+    return {
+      ...toPublicUser(user),
+      shop: member ? summary(member.shop!) : null,
+      branch: member ? summary(member.branch!) : null,
+      branches: branches.map(summary),
+    };
   }
 
   async updateProfile(userId: string, body: ProfileDto) {

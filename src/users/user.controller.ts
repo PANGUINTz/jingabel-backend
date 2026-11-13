@@ -20,7 +20,6 @@ import { UsersService } from './users.service.js';
 import { PaginationDto, UpdateUserDto } from './dto/user.response.js';
 import { Role, Roles } from '../auth/decorators/roles.decorator.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 
 const CREDENTIALS_THROTTLE = { default: { limit: 50, ttl: 60_000 } };
 

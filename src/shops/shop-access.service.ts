@@ -50,7 +50,10 @@ export class ShopAccessService {
     ]);
     if (!shop || !user) throw new NotFoundException(SHOP_NOT_FOUND_MESSAGE);
 
-    const member = await this.members.findOneBy({ shopId: shop.id, userId });
+    const member = await this.members.findOne({
+      where: { shopId: shop.id, userId },
+      relations: { branch: true },
+    });
     const isPlatformAdmin = user.role === 'admin';
     // Non-members get the same answer as for a shop that doesn't exist.
     if (!member && !isPlatformAdmin) {

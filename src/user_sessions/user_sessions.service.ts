@@ -111,6 +111,14 @@ export class UserSessionsService {
     );
   }
 
+  // Signs out every device, e.g. after a password reset.
+  async revokeAll(userSlug: string): Promise<void> {
+    await this.userSessions.update(
+      { userSlug, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
+  }
+
   // Signs out every other device, keeping the one making the request.
   async revokeAllExcept(userSlug: string, refreshToken: string): Promise<void> {
     await this.userSessions.update(

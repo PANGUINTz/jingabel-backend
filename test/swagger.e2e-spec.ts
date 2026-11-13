@@ -27,20 +27,32 @@ describe('Swagger (e2e)', () => {
       .expect(200);
 
     expect(Object.keys(res.body.paths).sort()).toEqual([
+      '/v1/api/auth/invitations/accept',
+      '/v1/api/auth/invitations/preview',
       '/v1/api/auth/login',
       '/v1/api/auth/logout',
       '/v1/api/auth/logout-all',
       '/v1/api/auth/me',
       '/v1/api/auth/password',
+      '/v1/api/auth/password/forgot',
+      '/v1/api/auth/password/reset',
+      '/v1/api/auth/password/reset/preview',
       '/v1/api/auth/profile',
       '/v1/api/auth/refresh',
       '/v1/api/auth/register',
+      '/v1/api/auth/revoke/{refreshToken}',
       '/v1/api/auth/sessions',
       '/v1/api/auth/sessions/{id}',
       '/v1/api/shops/mine',
       '/v1/api/shops/{shopSlug}',
+      '/v1/api/shops/{shopSlug}/branches',
+      '/v1/api/shops/{shopSlug}/branches/{branchSlug}',
       '/v1/api/shops/{shopSlug}/members',
       '/v1/api/shops/{shopSlug}/members/{userSlug}',
+      '/v1/api/shops/{shopSlug}/members/{userSlug}/invitation',
+      '/v1/api/shops/{shopSlug}/members/{userSlug}/status',
+      '/v1/api/users',
+      '/v1/api/users/{slug}',
     ]);
     expect(res.body.components.schemas).toHaveProperty('AuthResponse');
     expect(res.body.components.schemas.LoginDto.required).toEqual([

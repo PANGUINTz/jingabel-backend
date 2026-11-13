@@ -20,6 +20,7 @@ import {
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiGoneResponse,
   ApiNotFoundResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -34,8 +35,7 @@ import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { ApiErrorResponse } from '../common/swagger/api-error.response.js';
 import { Env } from '../config/env.js';
-import { UserResponse } from '../users/dto/user.response.js';
-import type { PublicUser } from '../users/user.entity.js';
+import { ProfileResponse, UserResponse } from '../users/dto/user.response.js';
 import { AuthService, type AuthResult } from './auth.service.js';
 import {
   ACCESS_TOKEN_COOKIE,
@@ -45,11 +45,24 @@ import {
 import { AuthResponse } from './dto/auth.response.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import {
+  AcceptInvitationDto,
+  InvitationPreviewResponse,
+  InvitationTokenDto,
+} from './dto/invitation.dto.js';
+import {
+  ForgotPasswordDto,
+  PasswordResetPreviewResponse,
+  PasswordResetTokenDto,
+  ResetPasswordDto,
+} from './dto/password-reset.dto.js';
 import { PasswordDto, ProfileDto } from './dto/profile.dto.js';
 import { SessionResponse } from '../user_sessions/dto/session.response.js';
 import type { SessionClient } from '../user_sessions/user_sessions.service.js';
 
 const CREDENTIALS_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
+// Each request can send an email.
+const FORGOT_PASSWORD_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
 
 const SETS_COOKIES =
   'ตั้ง cookie `access_token` และ `refresh_token` (httpOnly) — token ไม่อยู่ใน response body';
@@ -94,6 +107,105 @@ export class AuthController {
   }
 
   @ApiOperation({
+    summary: 'ดูรายละเอียดคำเชิญ',
+    description:
+      'ใช้ token จากลิงก์ในอีเมล (ส่งใน body ไม่ใช่ URL เพื่อไม่ให้ไปอยู่ใน log). จำกัด 10 ครั้งต่อนาที',
+  })
+  @ApiOkResponse({ type: InvitationPreviewResponse })
+  @ApiNotFoundResponse({ description: 'ลิงก์ไม่ถูกต้อง', type: ApiErrorResponse })
+  @ApiGoneResponse({
+    description: 'ลิงก์หมดอายุ ถูกใช้แล้ว หรือบัญชีไม่อยู่ในสถานะ pending',
+    type: ApiErrorResponse,
+  })
+  @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
+  @HttpCode(HttpStatus.OK)
+  @Post('invitations/preview')
+  previewInvitation(
+    @Body() dto: InvitationTokenDto,
+  ): Promise<InvitationPreviewResponse> {
+    return this.auth.previewInvitation(dto.token);
+  }
+
+  @ApiOperation({
+    summary: 'ยอมรับคำเชิญและตั้งรหัสผ่าน',
+    description: `เปลี่ยนสถานะบัญชีจาก pending เป็น active แล้วเข้าสู่ระบบทันที — ${SETS_COOKIES}. ลิงก์ใช้ได้ครั้งเดียว. จำกัด 10 ครั้งต่อนาที`,
+  })
+  @ApiOkResponse({ type: AuthResponse })
+  @ApiBadRequestResponse({
+    description: 'ข้อมูลไม่ผ่าน validation',
+    type: ApiErrorResponse,
+  })
+  @ApiNotFoundResponse({ description: 'ลิงก์ไม่ถูกต้อง', type: ApiErrorResponse })
+  @ApiGoneResponse({ description: 'ลิงก์หมดอายุหรือถูกใช้แล้ว', type: ApiErrorResponse })
+  @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
+  @HttpCode(HttpStatus.OK)
+  @Post('invitations/accept')
+  async acceptInvitation(
+    @Body() dto: AcceptInvitationDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponse> {
+    return this.respondWithSession(
+      res,
+      await this.auth.acceptInvitation(dto, sessionClient(req)),
+    );
+  }
+
+  @ApiOperation({
+    summary: 'ขอลิงก์ตั้งรหัสผ่านใหม่',
+    description:
+      'ตอบ 204 เสมอ ไม่บอกว่ามีบัญชีหรือไม่. บัญชี active ได้อีเมลลิงก์ตั้งรหัสผ่านใหม่, ' +
+      'บัญชีที่ถูกระงับได้อีเมลแจ้งว่าถูกระงับ (ไม่มีลิงก์), บัญชี pending ไม่ได้อะไร. จำกัด 5 ครั้งต่อนาที',
+  })
+  @ApiNoContentResponse({ description: 'รับคำขอแล้ว' })
+  @ApiBadRequestResponse({ description: 'อีเมลไม่ถูกรูปแบบ', type: ApiErrorResponse })
+  @Public()
+  @Throttle(FORGOT_PASSWORD_THROTTLE)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('password/forgot')
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<void> {
+    await this.auth.requestPasswordReset(dto.email);
+  }
+
+  @ApiOperation({
+    summary: 'ตรวจลิงก์ตั้งรหัสผ่านใหม่',
+    description: 'ใช้ token จากลิงก์ในอีเมล (ส่งใน body ไม่ใช่ URL). จำกัด 10 ครั้งต่อนาที',
+  })
+  @ApiOkResponse({ type: PasswordResetPreviewResponse })
+  @ApiNotFoundResponse({ description: 'ลิงก์ไม่ถูกต้อง', type: ApiErrorResponse })
+  @ApiForbiddenResponse({ description: 'บัญชีถูกระงับ', type: ApiErrorResponse })
+  @ApiGoneResponse({ description: 'ลิงก์หมดอายุหรือถูกใช้แล้ว', type: ApiErrorResponse })
+  @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
+  @HttpCode(HttpStatus.OK)
+  @Post('password/reset/preview')
+  previewPasswordReset(
+    @Body() dto: PasswordResetTokenDto,
+  ): Promise<PasswordResetPreviewResponse> {
+    return this.auth.previewPasswordReset(dto.token);
+  }
+
+  @ApiOperation({
+    summary: 'ตั้งรหัสผ่านใหม่จากลิงก์ในอีเมล',
+    description:
+      'ลิงก์ใช้ได้ครั้งเดียว และทุกอุปกรณ์ที่เข้าสู่ระบบอยู่จะถูกออกจากระบบ — เข้าสู่ระบบใหม่ด้วยรหัสผ่านใหม่. จำกัด 10 ครั้งต่อนาที',
+  })
+  @ApiNoContentResponse({ description: 'เปลี่ยนรหัสผ่านแล้ว' })
+  @ApiBadRequestResponse({ description: 'ข้อมูลไม่ผ่าน validation', type: ApiErrorResponse })
+  @ApiNotFoundResponse({ description: 'ลิงก์ไม่ถูกต้อง', type: ApiErrorResponse })
+  @ApiForbiddenResponse({ description: 'บัญชีถูกระงับ', type: ApiErrorResponse })
+  @ApiGoneResponse({ description: 'ลิงก์หมดอายุหรือถูกใช้แล้ว', type: ApiErrorResponse })
+  @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('password/reset')
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
+    await this.auth.resetPassword(dto.token, dto.password);
+  }
+
+  @ApiOperation({
     summary: 'เข้าสู่ระบบ',
     description: `${SETS_COOKIES}. จำกัด 10 ครั้งต่อนาที`,
   })
@@ -104,6 +216,10 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({
     description: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง',
+    type: ApiErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'บัญชีถูกระงับ (ตอบหลังรหัสผ่านถูกต้องเท่านั้น)',
     type: ApiErrorResponse,
   })
   @Public()
@@ -259,13 +375,13 @@ export class AuthController {
   @ApiOperation({ summary: 'ข้อมูลผู้ใช้ที่ login อยู่' })
   @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
   @ApiBearerAuth()
-  @ApiOkResponse({ type: UserResponse })
+  @ApiOkResponse({ type: ProfileResponse })
   @ApiUnauthorizedResponse({
     description: 'ไม่มี access token หรือหมดอายุ',
     type: ApiErrorResponse,
   })
   @Get('me')
-  me(@CurrentUser() user: AuthUser): Promise<PublicUser> {
+  me(@CurrentUser() user: AuthUser): Promise<ProfileResponse> {
     return this.auth.getProfile(user.id);
   }
 

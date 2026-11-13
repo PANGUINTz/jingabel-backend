@@ -14,17 +14,15 @@ API ของระบบจัดการร้านค้าหลายส�
 npm install
 cp .env.example .env    # แล้วใส่ JWT_ACCESS_SECRET / JWT_REFRESH_SECRET (openssl rand -hex 32)
 npm run db:up           # Postgres ใน Docker ที่ localhost:5433
-npm run migration:run   # สร้างตาราง
-npm run start:dev       # http://localhost:4000/v1/api
+npm run start:dev       # http://localhost:4000/v1/api (สร้าง/อัปเดตตารางให้เองตอนเริ่ม)
 ```
 
 เอกสาร API (Swagger) อยู่ที่ http://localhost:4000/v1/api/docs และ OpenAPI JSON ที่ `/v1/api/docs-json`
 
-หรือรันทั้ง Postgres และ API ใน Docker (API ไม่รัน migration เองตอนเริ่ม):
+หรือรันทั้ง Postgres และ API ใน Docker:
 
 ```bash
 docker compose up -d --build
-docker compose run --rm api npx typeorm migration:run -d dist/database/data-source.js
 ```
 
 ## คำสั่งที่ใช้บ่อย
@@ -36,9 +34,6 @@ docker compose run --rm api npx typeorm migration:run -d dist/database/data-sour
 | `npm run lint` | oxlint |
 | `npm test` | unit test |
 | `npm run test:e2e` | e2e test กับฐาน `jingabel_test` (ต้อง `npm run db:up` ก่อน) |
-| `npm run migration:run` | รัน migration ที่ค้างอยู่ |
-| `npm run migration:revert` | ย้อน migration ล่าสุด |
-| `npm run migration:generate -- src/database/migrations/<ชื่อ>` | สร้าง migration จากส่วนต่างระหว่าง entity กับฐานข้อมูล |
 
 ## Environment variables
 
@@ -53,6 +48,14 @@ docker compose run --rm api npx typeorm migration:run -d dist/database/data-sour
 | `SWAGGER_ENABLED` | เปิด ยกเว้นเมื่อ `NODE_ENV=production` | `true` / `false` เปิด-ปิดหน้า `/v1/api/docs` |
 | `JWT_ACCESS_TTL` | `900` | อายุ access token (วินาที) |
 | `JWT_REFRESH_TTL` | `604800` | อายุ refresh token (วินาที) |
+| `APP_URL` | `http://localhost:3000` | URL ของ frontend ใช้สร้างลิงก์ในอีเมล (ไม่มี `/` ท้าย) |
+| `INVITATION_TTL` | `604800` | อายุลิงก์คำเชิญ (วินาที) |
+| `PASSWORD_RESET_TTL` | `3600` | อายุลิงก์ตั้งรหัสผ่านใหม่ (วินาที) |
+| `SMTP_HOST` | — | ต้องกำหนดใน production — ถ้าว่างตอน dev จะไม่ส่งเมลจริง แต่ log เนื้อหาและลิงก์ไว้ใน console |
+| `SMTP_PORT` | `587` | |
+| `SMTP_SECURE` | `false` | `true` สำหรับพอร์ต 465 |
+| `SMTP_USER` / `SMTP_PASS` | — | ถ้า SMTP ต้อง login |
+| `MAIL_FROM` | `Jingabel <no-reply@jingabel.local>` | ผู้ส่ง |
 
 ค่าทั้งหมดถูกตรวจตอนเริ่มระบบ ถ้าขาดหรือผิดรูปแบบ แอปจะไม่ขึ้น
 
@@ -66,8 +69,9 @@ user / password สำหรับเครื่อง dev คือ `jingabel`
 | `jingabel` | พัฒนา |
 | `jingabel_test` | e2e test — **ถูกล้าง schema ทุกครั้งที่รัน** ห้ามเก็บข้อมูล |
 
-- `synchronize` ปิดไว้ การเปลี่ยน schema ทำผ่าน migration เท่านั้น
-- entity และ migration ใหม่ต้องเพิ่มใน `src/database/typeorm.options.ts`
+- ยังไม่ใช้ migration — เปิด `synchronize` ไว้ ตารางจะถูกสร้าง/แก้ให้ตรงกับ entity ทุกครั้งที่แอปเริ่ม
+  ระวัง: ถ้าลบหรือเปลี่ยน column ใน entity ข้อมูลใน column นั้นจะหายไปด้วย
+- entity ใหม่ต้องเพิ่มใน `src/database/typeorm.options.ts`
 - ถ้า `NODE_ENV=test` ชื่อฐานต้องลงท้ายด้วย `_test` ไม่อย่างนั้นจะไม่ยอมเชื่อมต่อ
 
 ## API
@@ -126,9 +130,7 @@ src/
 ├─ config/env.ts           # ตรวจ environment variables
 ├─ common/swagger/         # ตั้งค่า Swagger + schema ของ error
 ├─ database/
-│  ├─ typeorm.options.ts   # รายการ entity + migration
-│  ├─ data-source.ts       # สำหรับ TypeORM CLI เท่านั้น
-│  └─ migrations/
+│  └─ typeorm.options.ts   # รายการ entity
 ├─ auth/
 │  ├─ auth.controller.ts
 │  ├─ auth.service.ts

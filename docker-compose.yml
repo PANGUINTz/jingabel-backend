@@ -3,8 +3,7 @@
 #   docker compose up -d --build     start Postgres + the API (http://localhost:4000/api)
 #   docker compose up -d postgres    start only Postgres, for `npm run start:dev` on the host
 #
-# The API does not migrate on startup. Apply migrations explicitly:
-#   docker compose run --rm api npx typeorm migration:run -d dist/database/data-source.js
+# The API creates/updates its tables on startup (TypeORM synchronize).
 services:
   postgres:
     image: postgres:17-alpine

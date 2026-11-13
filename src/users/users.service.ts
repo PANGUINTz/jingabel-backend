@@ -2,7 +2,7 @@ import { Injectable, InternalServerErrorException, NotFoundException, Unauthoriz
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, type EntityManager, Repository } from 'typeorm';
 import { generateString } from '../common/utils/generate-string.js';
-import { USER_SLUG_LENGTH, User, toPublicUser } from './user.entity.js';
+import { USER_SLUG_LENGTH, User } from './user.entity.js';
 import { PaginationDto, UpdateUserDto } from './dto/user.response.js';
 
 // 62^10 possible slugs, so a collision is practically impossible — but the
@@ -12,8 +12,9 @@ const SLUG_UNIQUE_CONSTRAINT = 'UQ_users_slug';
 
 export type CreateUserInput = Pick<
   User,
-  'email' | 'fullName' | 'passwordHash' | 'role' | 'isEmployee'
->;
+  'email' | 'fullName' | 'passwordHash' | 'role'
+> &
+  Partial<Pick<User, 'status'>>;
 export type UpdateUserInput = Pick<
   User,
   'email' | 'fullName'
@@ -104,14 +105,13 @@ export class UsersService {
   }
 
   async usersList(opt: PaginationDto) {
-    const {page, limit, shop, search, status, branch, role} = opt
+    const { page, limit, search, status, role } = opt;
 
     const qb = this.users.createQueryBuilder('user')
     qb.select([
       'user.email',
       'user.fullName',
       'user.role',
-      'user.isEmployee',
       'user.slug',
       'user.status',
       'user.createdAt',

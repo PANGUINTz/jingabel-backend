@@ -56,7 +56,6 @@ describe('Auth (e2e)', () => {
     expect(res.body.user).toMatchObject({
       email: 'second@shop.com',
       role: 'shop_owner',
-      isEmployee: false,
     });
     expect(res.body.user.slug).toMatch(/^[A-Za-z0-9]{10}$/);
     expect(res.body.user.id).toBeUndefined();

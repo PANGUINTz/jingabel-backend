@@ -37,6 +37,10 @@ describe('Swagger (e2e)', () => {
       '/v1/api/auth/register',
       '/v1/api/auth/sessions',
       '/v1/api/auth/sessions/{id}',
+      '/v1/api/shops/mine',
+      '/v1/api/shops/{shopSlug}',
+      '/v1/api/shops/{shopSlug}/members',
+      '/v1/api/shops/{shopSlug}/members/{userSlug}',
     ]);
     expect(res.body.components.schemas).toHaveProperty('AuthResponse');
     expect(res.body.components.schemas.LoginDto.required).toEqual([

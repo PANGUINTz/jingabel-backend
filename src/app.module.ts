@@ -8,6 +8,7 @@ import { Env, validateEnv } from './config/env.js';
 import { buildTypeOrmOptions } from './database/typeorm.options.js';
 import { UsersModule } from './users/users.module.js';
 import { UserSessionsModule } from './user_sessions/user_sessions.module.js';
+import { ShopsModule } from './shops/shops.module.js';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { UserSessionsModule } from './user_sessions/user_sessions.module.js';
     UsersModule,
     AuthModule,
     UserSessionsModule,
+    ShopsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

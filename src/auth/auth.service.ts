@@ -10,7 +10,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import argon2 from 'argon2';
-import { QueryFailedError } from 'typeorm';
+import { DataSource, QueryFailedError } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { ShopsService } from '../shops/shops.service.js';
 import { Env } from '../config/env.js';
 import {
   toPublicUser,
@@ -70,6 +72,8 @@ export class AuthService {
     private readonly sessions: RefreshSessionStore,
     private readonly jwt: JwtService,
     private readonly config: ConfigService<Env, true>,
+    private readonly shops: ShopsService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async register(dto: RegisterDto, client: SessionClient): Promise<AuthResult> {
@@ -77,14 +81,23 @@ export class AuthService {
       throw new ConflictException(EMAIL_TAKEN_MESSAGE);
     }
 
-    // TODO: create the Shop from dto.shopName once the shop schema exists.
-    const user = await this.users
-      .create({
-        email: dto.email,
-        fullName: dto.fullName,
-        passwordHash: await argon2.hash(dto.password),
-        role: 'shop_owner',
-        isEmployee: false,
+    const passwordHash = await argon2.hash(dto.password);
+    // User, shop and owner membership are created together or not at all.
+    const user = await this.dataSource
+      .transaction(async (manager) => {
+        const created = await this.users.create(
+          {
+            email: dto.email,
+            fullName: dto.fullName,
+            passwordHash,
+            // Fixed role; createWithOwner below adds the shop membership.
+            role: 'shop_owner',
+            isEmployee: false,
+          },
+          manager,
+        );
+        await this.shops.createWithOwner(manager, created.id, dto.shopName);
+        return created;
       })
       .catch((error: unknown) => {
         // Two concurrent registrations can both pass the check above.

@@ -5,13 +5,13 @@ import {
   Entity,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { SHOP_ROLES } from '../shops/permissions.js';
 
-export const USER_ROLES = [
-  'shop_owner',
-  'branch_manager',
-  'employee',
-  'admin',
-] as const;
+// The only roles there are — fixed, no custom roles. 'admin' is the platform
+// admin; the rest are shop roles, held in every shop the user is a member of
+// (shop_members), with permissions from SHOP_ROLE_PERMISSIONS.
+// Must match CHK_users_role from the ShopRolesOnUsers migration.
+export const USER_ROLES = ['admin', ...SHOP_ROLES] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 
@@ -43,12 +43,15 @@ export class User {
   @Column({ name: 'password_hash', type: 'varchar', length: 255 })
   passwordHash: string;
 
-  @Column({ type: 'varchar', length: 32 })
+  @Column({ type: 'varchar', length: 32, default: 'shop_owner' })
   role: UserRole;
 
   // false only for self-registered Shop Owners; managers/employees are invited.
   @Column({ name: 'is_employee', type: 'boolean' })
   isEmployee: boolean;
+
+  @Column({ name: 'status', type: 'varchar', default: 'active' })
+  status: string;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

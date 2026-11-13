@@ -164,7 +164,6 @@ export class AuthController {
   @ApiNoContentResponse({ description: 'ออกจากระบบแล้ว' })
   // Identified by the refresh cookie, so it must work after the access token
   // has expired — the frontend calls it without the refresh-and-retry.
-  @Public()
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('logout')
   async logout(
